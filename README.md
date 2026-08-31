@@ -26,26 +26,26 @@ It supports:
 
 Additionally the plugin works with all `zabbix-agent2` versions in the 7.0, 7.2, and 7.4 branches.
 
-<a href="https://i.imgur.com/G6aRe01.png"><img width="100%" alt="DNF advisory collection values for a Rocky Linux 8 host in Zabbix" src="https://i.imgur.com/G6aRe01.png"></a>
+<a href="docs/images/dnf-advisory-values-rocky8.png"><img width="100%" alt="DNF advisory collection values for a Rocky Linux 8 host in Zabbix" src="docs/images/dnf-advisory-values-rocky8.png"></a>
 
 <details>
 <summary><strong>View more screenshots (7)</strong></summary>
 <br>
 <table>
   <tr>
-    <td width="50%" valign="top"><a href="https://i.imgur.com/n9rUWNO.png"><img width="100%" alt="DNF package update values for a Rocky Linux 8 host in Zabbix" src="https://i.imgur.com/n9rUWNO.png"></a></td>
-    <td width="50%" valign="top"><a href="https://i.imgur.com/uq18dl8.png"><img width="100%" alt="Package update problems across the Zabbix distribution test lab" src="https://i.imgur.com/uq18dl8.png"></a></td>
+    <td width="50%" valign="top"><a href="docs/images/dnf-package-values-rocky8.png"><img width="100%" alt="DNF package update values for a Rocky Linux 8 host in Zabbix" src="docs/images/dnf-package-values-rocky8.png"></a></td>
+    <td width="50%" valign="top"><a href="docs/images/distribution-lab-problems.png"><img width="100%" alt="Package update problems across the Zabbix distribution test lab" src="docs/images/distribution-lab-problems.png"></a></td>
   </tr>
   <tr>
-    <td width="50%" valign="top"><a href="https://i.imgur.com/T11GX2u.png"><img width="100%" alt="DNF template items and item keys in Zabbix" src="https://i.imgur.com/T11GX2u.png"></a></td>
-    <td width="50%" valign="top"><a href="https://i.imgur.com/WSx7wwF.png"><img width="100%" alt="APT template items and item keys in Zabbix" src="https://i.imgur.com/WSx7wwF.png"></a></td>
+    <td width="50%" valign="top"><a href="docs/images/dnf-template-items.png"><img width="100%" alt="DNF template items and item keys in Zabbix" src="docs/images/dnf-template-items.png"></a></td>
+    <td width="50%" valign="top"><a href="docs/images/apt-template-items.png"><img width="100%" alt="APT template items and item keys in Zabbix" src="docs/images/apt-template-items.png"></a></td>
   </tr>
   <tr>
-    <td width="50%" valign="top"><a href="https://i.imgur.com/mvY4aVv.png"><img width="100%" alt="APT package update triggers in Zabbix" src="https://i.imgur.com/mvY4aVv.png"></a></td>
-    <td width="50%" valign="top"><a href="https://i.imgur.com/xQyEH7b.png"><img width="100%" alt="DNF package update and advisory triggers in Zabbix" src="https://i.imgur.com/xQyEH7b.png"></a></td>
+    <td width="50%" valign="top"><a href="docs/images/apt-triggers.png"><img width="100%" alt="APT package update triggers in Zabbix" src="docs/images/apt-triggers.png"></a></td>
+    <td width="50%" valign="top"><a href="docs/images/dnf-triggers.png"><img width="100%" alt="DNF package update and advisory triggers in Zabbix" src="docs/images/dnf-triggers.png"></a></td>
   </tr>
   <tr>
-    <td width="50%" valign="top"><a href="https://i.imgur.com/DX618BW.png"><img width="100%" alt="APT package update values for a Debian 13 host in Zabbix" src="https://i.imgur.com/DX618BW.png"></a></td>
+    <td width="50%" valign="top"><a href="docs/images/apt-package-values-debian13.png"><img width="100%" alt="APT package update values for a Debian 13 host in Zabbix" src="docs/images/apt-package-values-debian13.png"></a></td>
     <td width="50%"></td>
   </tr>
 </table>

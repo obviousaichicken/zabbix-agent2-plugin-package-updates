@@ -24,7 +24,7 @@ import (
 const (
 	pluginName          = "PackageUpdates"
 	metricPackagesGet   = "packages.get"
-	metricAdvisoriesGet = "dnf.advisories.get"
+	metricAdvisoriesGet = "advisories.get"
 	testArg             = "--test"
 	collectionTimeout   = 2 * time.Minute
 )

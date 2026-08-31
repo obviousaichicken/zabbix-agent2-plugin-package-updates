@@ -32,7 +32,7 @@ zabbix_export:
         - uuid: 08f65d52266a4db8acd8067fa07ffb4c
           name: 'DNF: Get advisory data'
           type: ZABBIX_PASSIVE
-          key: dnf.advisories.get
+          key: advisories.get
           delay: '{$DNF.ADVISORY.UPDATE.INTERVAL}'
           history: '0'
           value_type: TEXT
@@ -207,7 +207,7 @@ zabbix_export:
                   });
                   return JSON.stringify(records);
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -226,7 +226,7 @@ zabbix_export:
             - type: BOOL_TO_DECIMAL
               parameters: []
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -257,7 +257,7 @@ zabbix_export:
               parameters:
                 - '0.001'
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -276,7 +276,7 @@ zabbix_export:
             - type: BOOL_TO_DECIMAL
               parameters: []
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -307,7 +307,7 @@ zabbix_export:
             - type: BOOL_TO_DECIMAL
               parameters: []
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -326,7 +326,7 @@ zabbix_export:
             - type: BOOL_TO_DECIMAL
               parameters: []
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -341,7 +341,7 @@ zabbix_export:
               parameters:
                 - $.summary.advisories
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -356,7 +356,7 @@ zabbix_export:
               parameters:
                 - $.summary.unique_cves
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -371,7 +371,7 @@ zabbix_export:
               parameters:
                 - $.summary.advisories_by_severity.critical
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -398,7 +398,7 @@ zabbix_export:
               parameters:
                 - $.summary.advisories_by_severity.important
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -425,7 +425,7 @@ zabbix_export:
               parameters:
                 - $.summary.advisories_by_severity.moderate
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -440,7 +440,7 @@ zabbix_export:
               parameters:
                 - $.summary.advisories_by_severity.low
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -455,7 +455,7 @@ zabbix_export:
               parameters:
                 - $.summary.advisories_by_severity.unknown
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -482,7 +482,7 @@ zabbix_export:
               parameters:
                 - $.summary.package_updates_by_severity.critical
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -509,7 +509,7 @@ zabbix_export:
               parameters:
                 - $.summary.package_updates_by_severity.important
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -524,7 +524,7 @@ zabbix_export:
               parameters:
                 - $.summary.package_updates_by_severity.moderate
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -539,7 +539,7 @@ zabbix_export:
               parameters:
                 - $.summary.package_updates_by_severity.low
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -554,7 +554,7 @@ zabbix_export:
               parameters:
                 - $.summary.package_updates_by_severity.unknown
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -582,7 +582,7 @@ zabbix_export:
 
                   return Math.floor(milliseconds / 1000);
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -607,7 +607,7 @@ zabbix_export:
 
                   return Math.floor(age);
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -635,7 +635,7 @@ zabbix_export:
               parameters:
                 - $.summary.oldest_vendor_timestamp_basis
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -2267,7 +2267,7 @@ zabbix_export:
         - uuid: 9d4539938b634b2fa8c2a8edd8e14cd8
           name: 'DNF: Get advisory data'
           type: ZABBIX_ACTIVE
-          key: dnf.advisories.get
+          key: advisories.get
           delay: '{$DNF.ADVISORY.UPDATE.INTERVAL}'
           history: '0'
           value_type: TEXT
@@ -2442,7 +2442,7 @@ zabbix_export:
                   });
                   return JSON.stringify(records);
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -2461,7 +2461,7 @@ zabbix_export:
             - type: BOOL_TO_DECIMAL
               parameters: []
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -2492,7 +2492,7 @@ zabbix_export:
               parameters:
                 - '0.001'
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -2511,7 +2511,7 @@ zabbix_export:
             - type: BOOL_TO_DECIMAL
               parameters: []
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -2542,7 +2542,7 @@ zabbix_export:
             - type: BOOL_TO_DECIMAL
               parameters: []
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -2561,7 +2561,7 @@ zabbix_export:
             - type: BOOL_TO_DECIMAL
               parameters: []
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -2576,7 +2576,7 @@ zabbix_export:
               parameters:
                 - $.summary.advisories
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -2591,7 +2591,7 @@ zabbix_export:
               parameters:
                 - $.summary.unique_cves
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -2606,7 +2606,7 @@ zabbix_export:
               parameters:
                 - $.summary.advisories_by_severity.critical
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -2633,7 +2633,7 @@ zabbix_export:
               parameters:
                 - $.summary.advisories_by_severity.important
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -2660,7 +2660,7 @@ zabbix_export:
               parameters:
                 - $.summary.advisories_by_severity.moderate
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -2675,7 +2675,7 @@ zabbix_export:
               parameters:
                 - $.summary.advisories_by_severity.low
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -2690,7 +2690,7 @@ zabbix_export:
               parameters:
                 - $.summary.advisories_by_severity.unknown
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -2717,7 +2717,7 @@ zabbix_export:
               parameters:
                 - $.summary.package_updates_by_severity.critical
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -2744,7 +2744,7 @@ zabbix_export:
               parameters:
                 - $.summary.package_updates_by_severity.important
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -2759,7 +2759,7 @@ zabbix_export:
               parameters:
                 - $.summary.package_updates_by_severity.moderate
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -2774,7 +2774,7 @@ zabbix_export:
               parameters:
                 - $.summary.package_updates_by_severity.low
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -2789,7 +2789,7 @@ zabbix_export:
               parameters:
                 - $.summary.package_updates_by_severity.unknown
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -2817,7 +2817,7 @@ zabbix_export:
 
                   return Math.floor(milliseconds / 1000);
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -2842,7 +2842,7 @@ zabbix_export:
 
                   return Math.floor(age);
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security
@@ -2870,7 +2870,7 @@ zabbix_export:
               parameters:
                 - $.summary.oldest_vendor_timestamp_basis
           master_item:
-            key: dnf.advisories.get
+            key: advisories.get
           tags:
             - tag: component
               value: security

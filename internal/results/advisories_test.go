@@ -31,7 +31,7 @@ func TestBuildAdvisoriesGolden(t *testing.T) {
 	}
 	want = bytes.TrimSuffix(want, []byte("\n"))
 	if !bytes.Equal(data, want) {
-		t.Fatalf("dnf.advisories.get payload changed\ngot:  %s\nwant: %s", data, want)
+		t.Fatalf("advisories.get payload changed\ngot:  %s\nwant: %s", data, want)
 	}
 	if len(data) >= 64<<10 {
 		t.Fatalf("normal advisory payload is %d bytes, want below 64 KiB", len(data))

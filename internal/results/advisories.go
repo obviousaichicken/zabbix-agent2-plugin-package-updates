@@ -25,7 +25,7 @@ var (
 	advisoryCVEPattern         = regexp.MustCompile(`^CVE-[0-9]{4}-[0-9]{4,}$`)
 )
 
-// AdvisoryPayload is the compact dnf.advisories.get response.
+// AdvisoryPayload is the compact advisories.get response.
 type AdvisoryPayload struct {
 	SchemaVersion int                `json:"schema_version"` //nolint:tagliatelle // Public schema uses snake_case.
 	Collection    AdvisoryCollection `json:"collection"`

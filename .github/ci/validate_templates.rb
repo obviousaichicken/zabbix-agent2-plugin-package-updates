@@ -168,7 +168,7 @@ fail_contract("APT-owned UUIDs are not fresh: #{overlap.join(', ')}") unless ove
 dnf_templates = templates_by_family.fetch("DNF")
 expected_dnf_keys = %w[
   packages.get
-  dnf.advisories.get
+  advisories.get
   dnf.advisory.discovery.data
   dnf.collection.complete
   dnf.collection.duration
@@ -268,7 +268,7 @@ dnf_templates.each do |template|
     end
   end
 
-  master = items_by_key.fetch("dnf.advisories.get")
+  master = items_by_key.fetch("advisories.get")
   expected_type = template_name.end_with?(" active") ? "ZABBIX_ACTIVE" : "ZABBIX_PASSIVE"
   unless master["type"] == expected_type &&
          master["delay"] == "{$DNF.ADVISORY.UPDATE.INTERVAL}" &&
@@ -281,7 +281,7 @@ dnf_templates.each do |template|
   discovery_steps = discovery_data.fetch("preprocessing")
   unless discovery_data["type"] == "DEPENDENT" && discovery_data["history"] == "0" &&
          discovery_data["value_type"] == "TEXT" &&
-         discovery_data.dig("master_item", "key") == "dnf.advisories.get" &&
+         discovery_data.dig("master_item", "key") == "advisories.get" &&
          discovery_steps.length == 1 && discovery_steps.first["type"] == "JAVASCRIPT"
     fail_contract("#{template_name} advisory discovery projection contract is invalid")
   end
@@ -388,7 +388,7 @@ dnf_templates.each do |template|
   items_by_key.each do |key, item|
     next unless key.start_with?("dnf.advisory.")
 
-    unless item["type"] == "DEPENDENT" && item.dig("master_item", "key") == "dnf.advisories.get"
+    unless item["type"] == "DEPENDENT" && item.dig("master_item", "key") == "advisories.get"
       fail_contract("#{template_name} #{key} is not linked to the advisory master")
     end
   end

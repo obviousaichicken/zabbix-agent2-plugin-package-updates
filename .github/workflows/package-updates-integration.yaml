@@ -139,7 +139,7 @@ jobs:
 
       - name: Test installed Agent 2 plugin
         run: |
-          for item_key in packages.get dnf.advisories.get; do
+          for item_key in packages.get advisories.get; do
             output="$(docker run --rm \
               --user zabbix \
               --entrypoint /usr/sbin/zabbix_agent2 \
@@ -154,7 +154,7 @@ jobs:
                 exit 1
                 ;;
             esac
-            if [ "$item_key" = dnf.advisories.get ]; then
+            if [ "$item_key" = advisories.get ]; then
               case "$output" in
                 *'"schema_version":1'*'"advisories":['*) ;;
                 *)
@@ -342,7 +342,7 @@ jobs:
             "$AGENT_IMAGE" \
             /bin/sh -c '
               PATH=/tmp/fakebin:$PATH zabbix_agent2 -t packages.get
-              PATH=/tmp/fakebin:$PATH zabbix_agent2 -t dnf.advisories.get
+              PATH=/tmp/fakebin:$PATH zabbix_agent2 -t advisories.get
             ')"
           duration=$((SECONDS - started))
           if (( duration >= 20 )); then
@@ -420,7 +420,7 @@ jobs:
                   "result": "not_recorded",
               }
 
-          advisories = item_payload("dnf.advisories.get")
+          advisories = item_payload("advisories.get")
           assert advisories["schema_version"] == 1
           assert advisories["collection"]["complete"] is True
           assert advisories["metadata"] == {

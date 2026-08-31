@@ -18,24 +18,26 @@ TEMPLATE_PATH = os.getenv(
     "ZBX_TEMPLATE_PATH",
     "/bootstrap/template-package-updates-by-zabbix-agent2.yaml",
 )
-PASSIVE_TEMPLATE_NAME = "DNF by Zabbix agent 2"
-ACTIVE_TEMPLATE_NAME = "DNF by Zabbix agent 2 active"
+DNF_PASSIVE_TEMPLATE_NAME = "DNF by Zabbix agent 2"
+DNF_ACTIVE_TEMPLATE_NAME = "DNF by Zabbix agent 2 active"
+APT_PASSIVE_TEMPLATE_NAME = "APT by Zabbix agent 2"
 TEMPLATES = (
     (
         TEMPLATE_PATH,
         (
-            PASSIVE_TEMPLATE_NAME,
-            ACTIVE_TEMPLATE_NAME,
-            "APT by Zabbix agent 2",
+            DNF_PASSIVE_TEMPLATE_NAME,
+            DNF_ACTIVE_TEMPLATE_NAME,
+            APT_PASSIVE_TEMPLATE_NAME,
             "APT by Zabbix agent 2 active",
         ),
     ),
 )
 HOST_GROUP_NAME = "Package Updates plugin lab"
 WAIT_TIMEOUT = int(os.getenv("ZBX_BOOTSTRAP_TIMEOUT", "180"))
+CACHE_SYNC_WAIT = int(os.getenv("ZBX_CACHE_SYNC_WAIT", "15"))
 TEMPLATE_ONLY = os.getenv("ZBX_TEMPLATE_ONLY", "0") == "1"
 
-PASSIVE_HOSTS = (
+DNF_PASSIVE_HOSTS = (
     ("zbx70-ubi8-agent", "UBI 8 / Package Updates", "zbx70_ubi8_agent"),
     ("zbx70-ubi9-agent", "UBI 9 / Package Updates", "zbx70_ubi9_agent"),
     ("zbx70-ubi10-agent", "UBI 10 / Package Updates", "zbx70_ubi10_agent"),
@@ -46,11 +48,21 @@ PASSIVE_HOSTS = (
     ("zbx70-rocky10-agent", "Rocky Linux 10 / Package Updates", "zbx70_rocky10_agent"),
     ("zbx70-alma9-agent", "AlmaLinux 9 / Package Updates", "zbx70_alma9_agent"),
     ("zbx70-alma10-agent", "AlmaLinux 10 / Package Updates", "zbx70_alma10_agent"),
+    ("zbx70-oracle8-agent", "Oracle Linux 8 / Package Updates", "zbx70_oracle8_agent"),
+    ("zbx70-oracle9-agent", "Oracle Linux 9 / Package Updates", "zbx70_oracle9_agent"),
+    ("zbx70-oracle10-agent", "Oracle Linux 10 / Package Updates", "zbx70_oracle10_agent"),
     ("zbx70-centos9-agent", "CentOS Stream 9 / Package Updates", "zbx70_centos9_agent"),
     ("zbx70-centos10-agent", "CentOS Stream 10 / Package Updates", "zbx70_centos10_agent"),
 )
 
-ACTIVE_HOSTS = (
+APT_PASSIVE_HOSTS = (
+    ("zbx70-debian13-agent", "Debian 13 / Package Updates", "zbx70_debian13_agent"),
+    ("zbx70-ubuntu2204-agent", "Ubuntu 22.04 / Package Updates", "zbx70_ubuntu2204_agent"),
+    ("zbx70-ubuntu2404-agent", "Ubuntu 24.04 / Package Updates", "zbx70_ubuntu2404_agent"),
+    ("zbx70-ubuntu2604-agent", "Ubuntu 26.04 / Package Updates", "zbx70_ubuntu2604_agent"),
+)
+
+DNF_ACTIVE_HOSTS = (
     ("zbx70-ubi9-agent-active", "UBI 9 / Package Updates (active)", None),
     ("zbx70-fedora44-agent-active", "Fedora 44 / Package Updates (active)", None),
 )
@@ -315,8 +327,9 @@ def main():
         for _, names in TEMPLATES
         for name in names
     }
-    passive_template_id = template_ids[PASSIVE_TEMPLATE_NAME]
-    active_template_id = template_ids[ACTIVE_TEMPLATE_NAME]
+    dnf_passive_template_id = template_ids[DNF_PASSIVE_TEMPLATE_NAME]
+    dnf_active_template_id = template_ids[DNF_ACTIVE_TEMPLATE_NAME]
+    apt_passive_template_id = template_ids[APT_PASSIVE_TEMPLATE_NAME]
     if TEMPLATE_ONLY:
         validated = ", ".join(
             f"{name} ({template_ids[name]})"
@@ -327,14 +340,22 @@ def main():
         return
 
     group_id = get_or_create_host_group(api)
-    passive_host_ids = [
-        ensure_host(api, *host, group_id, passive_template_id)
-        for host in PASSIVE_HOSTS
+    dnf_passive_host_ids = [
+        ensure_host(api, *host, group_id, dnf_passive_template_id)
+        for host in DNF_PASSIVE_HOSTS
     ]
-    for host in ACTIVE_HOSTS:
-        ensure_host(api, *host, group_id, active_template_id)
+    apt_passive_host_ids = [
+        ensure_host(api, *host, group_id, apt_passive_template_id)
+        for host in APT_PASSIVE_HOSTS
+    ]
+    for host in DNF_ACTIVE_HOSTS:
+        ensure_host(api, *host, group_id, dnf_active_template_id)
 
-    execute_master_items(api, passive_host_ids)
+    if CACHE_SYNC_WAIT > 0:
+        print(f"Waiting {CACHE_SYNC_WAIT} seconds for the Zabbix configuration cache")
+        time.sleep(CACHE_SYNC_WAIT)
+
+    execute_master_items(api, dnf_passive_host_ids + apt_passive_host_ids)
 
     print("Zabbix lab bootstrap completed")
 

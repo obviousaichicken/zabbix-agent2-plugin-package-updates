@@ -442,7 +442,7 @@ func TestPluginExportRejectsInvalidRequest(t *testing.T) {
 			key:     metricAdvisoriesGet,
 			params:  []string{"unexpected"},
 			wantErr: errItemKeyParameters,
-			want:    "item key does not accept parameters: dnf.advisories.get",
+			want:    "item key does not accept parameters: advisories.get",
 		},
 	}
 
@@ -499,7 +499,7 @@ func TestPluginAPTExportsPackageSchemaAndRejectsAdvisoryKey(t *testing.T) {
 	}
 
 	_, err = p.Export(metricAdvisoriesGet, nil, nil)
-	want := "dnf.advisories.get requires the DNF backend; detected apt"
+	want := "advisories.get requires the DNF backend; detected apt"
 	if err == nil || err.Error() != want {
 		t.Errorf("Export(%s) error = %q, want %q", metricAdvisoriesGet, err, want)
 	}
@@ -527,18 +527,18 @@ func TestPluginDNFExportsAdvisorySchema(t *testing.T) {
 
 	value, err := p.Export(metricAdvisoriesGet, nil, nil)
 	if err != nil {
-		t.Fatalf("Export(dnf.advisories.get) error = %v", err)
+		t.Fatalf("Export(advisories.get) error = %v", err)
 	}
 	var payload map[string]any
 	if err := json.Unmarshal([]byte(value.(string)), &payload); err != nil {
-		t.Fatalf("decode dnf.advisories.get: %v", err)
+		t.Fatalf("decode advisories.get: %v", err)
 	}
 	if payload["schema_version"] != float64(1) || !payload["collection"].(map[string]any)["complete"].(bool) {
-		t.Fatalf("dnf.advisories.get schema = %#v", payload)
+		t.Fatalf("advisories.get schema = %#v", payload)
 	}
 	summary := payload["summary"].(map[string]any)
 	if summary["advisories"] != float64(1) || summary["unique_cves"] != float64(1) {
-		t.Fatalf("dnf.advisories.get summary = %#v", summary)
+		t.Fatalf("advisories.get summary = %#v", summary)
 	}
 }
 
@@ -576,14 +576,14 @@ func TestPluginDNFExportsPackageAndAdvisorySchemas(t *testing.T) {
 
 	advisoryValue, err := p.Export(metricAdvisoriesGet, nil, nil)
 	if err != nil {
-		t.Fatalf("Export(dnf.advisories.get) error = %v", err)
+		t.Fatalf("Export(advisories.get) error = %v", err)
 	}
 	var advisory map[string]any
 	if err := json.Unmarshal([]byte(advisoryValue.(string)), &advisory); err != nil {
-		t.Fatalf("decode dnf.advisories.get: %v", err)
+		t.Fatalf("decode advisories.get: %v", err)
 	}
 	if advisory["schema_version"] != float64(1) || advisory["summary"].(map[string]any)["advisories"] != float64(1) {
-		t.Fatalf("dnf.advisories.get schema = %#v", advisory)
+		t.Fatalf("advisories.get schema = %#v", advisory)
 	}
 }
 
@@ -615,7 +615,7 @@ func TestPluginAdvisoryFailureIsIsolated(t *testing.T) {
 	defer p.Stop()
 
 	if _, err := p.Export(metricAdvisoriesGet, nil, nil); !errors.Is(err, advisoryErr) {
-		t.Fatalf("Export(dnf.advisories.get) error = %v, want %v", err, advisoryErr)
+		t.Fatalf("Export(advisories.get) error = %v, want %v", err, advisoryErr)
 	}
 	if _, err := p.Export(metricPackagesGet, nil, nil); err != nil {
 		t.Fatalf("Export(%s) after advisory failure error = %v", metricPackagesGet, err)

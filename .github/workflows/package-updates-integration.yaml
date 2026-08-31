@@ -1,0 +1,477 @@
+name: Package Updates Integration Tests
+
+on:
+  workflow_call:
+  pull_request:
+  merge_group:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dnf:
+    name: Distribution compatibility / ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: UBI 8 / DNF
+            image: registry.access.redhat.com/ubi8/ubi:latest
+            dockerfile: .dev/Dockerfile.ubi
+            build-args: UBI_VERSION=8 UBI_TAG=latest
+          - name: UBI 9 / DNF
+            image: registry.access.redhat.com/ubi9/ubi:latest
+            dockerfile: .dev/Dockerfile.ubi
+            build-args: UBI_VERSION=9 UBI_TAG=latest
+          - name: UBI 9 / DNF / Zabbix 7.4
+            image: registry.access.redhat.com/ubi9/ubi:latest
+            dockerfile: .dev/Dockerfile.ubi
+            build-args: UBI_VERSION=9 UBI_TAG=latest ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.4/release/rhel/9/noarch/zabbix-release-latest.el9.noarch.rpm
+          - name: UBI 10 / DNF
+            image: registry.access.redhat.com/ubi10/ubi:latest
+            dockerfile: .dev/Dockerfile.ubi
+            build-args: UBI_VERSION=10 UBI_TAG=latest
+          - name: Fedora 43 / DNF5
+            image: fedora:43
+            dockerfile: .dev/Dockerfile.dnf
+            build-args: BASE_IMAGE=fedora:43 ZABBIX_RHEL_VERSION=10
+          - name: Fedora 44 / DNF5
+            image: fedora:44
+            dockerfile: .dev/Dockerfile.dnf
+            build-args: BASE_IMAGE=fedora:44 ZABBIX_RHEL_VERSION=10
+          - name: Fedora 44 / DNF5 / Zabbix 7.4
+            image: fedora:44
+            dockerfile: .dev/Dockerfile.dnf
+            build-args: BASE_IMAGE=fedora:44 ZABBIX_RHEL_VERSION=10 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.4/release/rhel/10/noarch/zabbix-release-latest.el10.noarch.rpm
+          - name: Rocky Linux 9 / DNF
+            image: rockylinux/rockylinux:9
+            dockerfile: .dev/Dockerfile.dnf
+            build-args: BASE_IMAGE=rockylinux/rockylinux:9 ZABBIX_RHEL_VERSION=9
+          - name: Rocky Linux 10 / DNF
+            image: rockylinux/rockylinux:10
+            dockerfile: .dev/Dockerfile.dnf
+            build-args: BASE_IMAGE=rockylinux/rockylinux:10 ZABBIX_RHEL_VERSION=10
+          - name: AlmaLinux 9 / DNF
+            image: almalinux:9
+            dockerfile: .dev/Dockerfile.dnf
+            build-args: BASE_IMAGE=almalinux:9 ZABBIX_RHEL_VERSION=9
+          - name: AlmaLinux 10 / DNF
+            image: almalinux:10
+            dockerfile: .dev/Dockerfile.dnf
+            build-args: BASE_IMAGE=almalinux:10 ZABBIX_RHEL_VERSION=10
+          - name: CentOS Stream 9 / DNF
+            image: quay.io/centos/centos:stream9
+            dockerfile: .dev/Dockerfile.dnf
+            build-args: BASE_IMAGE=quay.io/centos/centos:stream9 ZABBIX_RHEL_VERSION=9
+          - name: CentOS Stream 10 / DNF
+            image: quay.io/centos/centos:stream10
+            dockerfile: .dev/Dockerfile.dnf
+            build-args: BASE_IMAGE=quay.io/centos/centos:stream10 ZABBIX_RHEL_VERSION=10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Build integration test
+        run: CGO_ENABLED=0 go test -tags=integration -c -o dnf-integration.test ./integration
+
+      - name: Run DNF integration test
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: |
+          docker pull "$IMAGE"
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE:/src:ro" \
+            --workdir /src \
+            "$IMAGE" \
+            /bin/bash -lc '
+              set -eu
+              dnf -q makecache
+              command -v dnf
+              command -v rpm
+              command -v uname
+              ./dnf-integration.test -test.v -test.run "^TestDNFSmoke$"
+            '
+
+      - name: Build Agent 2 image and test installer GPG bootstrap
+        env:
+          BUILD_ARGS: ${{ matrix.build-args }}
+          DOCKERFILE: ${{ matrix.dockerfile }}
+        run: |
+          build_args=()
+          for argument in $BUILD_ARGS; do
+            build_args+=(--build-arg "$argument")
+          done
+          docker build \
+            --file "$DOCKERFILE" \
+            "${build_args[@]}" \
+            --tag zabbix-agent2-plugin-package-updates:integration \
+            .
+
+      - name: Test installed Agent 2 plugin
+        run: |
+          for item_key in dnf.get packages.get dnf.advisories.get; do
+            output="$(docker run --rm \
+              --user zabbix \
+              --entrypoint /usr/sbin/zabbix_agent2 \
+              zabbix-agent2-plugin-package-updates:integration \
+              -c /etc/zabbix/zabbix_agent2.conf \
+              -t "$item_key")"
+            case "$output" in
+              *"[s|"*'"collection":{"complete":true'*) ;;
+              *)
+                printf '%s did not return a complete collection: %s\n' \
+                  "$item_key" "$output" >&2
+                exit 1
+                ;;
+            esac
+            if [ "$item_key" = dnf.advisories.get ]; then
+              case "$output" in
+                *'"schema_version":1'*'"advisories":['*) ;;
+                *)
+                  printf '%s did not return advisory schema 1: %s\n' \
+                    "$item_key" "$output" >&2
+                  exit 1
+                  ;;
+              esac
+            fi
+            printf '%s\n' "$output"
+          done
+
+  apt:
+    name: Distribution compatibility / ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Debian 12 / APT / Zabbix 7.0
+            image: debian:12
+            agent-version: "7.0"
+            dockerfile: .dev/Dockerfile.apt
+            build-args: BASE_IMAGE=debian:12 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.0/debian/pool/main/z/zabbix-release/zabbix-release_latest_7.0+debian12_all.deb
+          - name: Debian 13 / APT / Zabbix 7.0
+            image: debian:13
+            agent-version: "7.0"
+            dockerfile: .dev/Dockerfile.apt
+            build-args: BASE_IMAGE=debian:13 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.0/debian/pool/main/z/zabbix-release/zabbix-release_latest_7.0+debian13_all.deb
+          - name: Ubuntu 22.04 / APT / Zabbix 7.0
+            image: ubuntu:22.04
+            agent-version: "7.0"
+            dockerfile: .dev/Dockerfile.apt
+            build-args: BASE_IMAGE=ubuntu:22.04 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest_7.0+ubuntu22.04_all.deb
+          - name: Ubuntu 24.04 / APT / Zabbix 7.0
+            image: ubuntu:24.04
+            agent-version: "7.0"
+            dockerfile: .dev/Dockerfile.apt
+            build-args: BASE_IMAGE=ubuntu:24.04 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest_7.0+ubuntu24.04_all.deb
+          - name: Ubuntu 26.04 / APT / Zabbix 7.4
+            image: ubuntu:26.04
+            agent-version: "7.4"
+            dockerfile: .dev/Dockerfile.apt
+            build-args: BASE_IMAGE=ubuntu:26.04 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.4/release/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest_7.4+ubuntu26.04_all.deb
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Build integration test
+        run: CGO_ENABLED=0 go test -tags=integration -c -o dnf-integration.test ./integration
+
+      - name: Run read-only APT integration test as zabbix
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: |
+          docker pull "$IMAGE"
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE:/src:ro" \
+            --workdir /src \
+            "$IMAGE" \
+            /bin/bash -lc '
+              set -eu
+              export DEBIAN_FRONTEND=noninteractive
+              apt-get update
+              apt-get install -y --no-install-recommends passwd util-linux
+              command -v apt-get
+              command -v apt-cache
+              command -v dpkg-query
+              command -v dpkg
+              if ! id zabbix >/dev/null 2>&1; then
+                useradd --system --no-create-home --shell /usr/sbin/nologin zabbix
+              fi
+              runuser -u zabbix -- ./dnf-integration.test -test.v -test.run "^TestAPTSmoke$"
+            '
+
+      - name: Build APT Agent 2 image and test installer
+        env:
+          BUILD_ARGS: ${{ matrix.build-args }}
+          DOCKERFILE: ${{ matrix.dockerfile }}
+        run: |
+          build_args=()
+          for argument in $BUILD_ARGS; do
+            build_args+=(--build-arg "$argument")
+          done
+          docker build \
+            --file "$DOCKERFILE" \
+            "${build_args[@]}" \
+            --tag zabbix-agent2-plugin-package-updates:apt-integration \
+            .
+
+      - name: Test installed APT Agent 2 plugin as zabbix
+        run: |
+          output="$(docker run --rm \
+            --user zabbix \
+            --entrypoint /usr/sbin/zabbix_agent2 \
+            zabbix-agent2-plugin-package-updates:apt-integration \
+            -c /etc/zabbix/zabbix_agent2.conf \
+            -t packages.get)"
+
+          OUTPUT="$output" python3 - <<'PY'
+          import json
+          import os
+          import re
+
+          output = os.environ["OUTPUT"]
+          match = re.search(r"packages\.get\s+\[s\|(\{[^\n]*\})\]", output)
+          if match is None:
+              raise SystemExit(f"packages.get did not return a supported string value: {output!r}")
+
+          payload = json.loads(match.group(1))
+          assert payload["schema_version"] == 1
+          assert payload["backend"] == "apt"
+          assert payload["collection"]["complete"] is True
+          assert payload["classification"] == {
+              "complete": True,
+              "failed_categories": [],
+          }
+          assert isinstance(payload["repositories"], list)
+          assert isinstance(payload["updates"], list)
+          assert payload["summary"]["repositories"] == len(payload["repositories"])
+          assert payload["summary"]["updates"] == len(payload["updates"])
+          counts = payload["summary"]["update_types"]
+          assert counts["bugfix"] == 0
+          assert counts["enhancement"] == 0
+          assert counts["security"] + counts["other"] == payload["summary"]["updates"]
+          assert payload["metadata"]["refreshed_at"] is not None
+          assert payload["metadata"]["age_seconds"] >= 0
+          PY
+
+          printf '%s\n' "$output"
+
+  agent2:
+    name: Agent 2 protocol compatibility / ${{ matrix.version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        version:
+          - 7.0.0
+          - 7.0.1
+          - 7.0.2
+          - 7.0.3
+          - 7.0.4
+          - 7.0.5
+          - 7.0.6
+          - 7.0.7
+          - 7.0.8
+          - 7.0.9
+          - 7.0.10
+          - 7.0.11
+          - 7.0.12
+          - 7.0.13
+          - 7.0.14
+          - 7.0.15
+          - 7.0.16
+          - 7.0.17
+          - 7.0.18
+          - 7.0.19
+          - 7.0.20
+          - 7.0.21
+          - 7.0.22
+          - 7.0.23
+          - 7.0.24
+          - 7.0.25
+          - 7.0.26
+          - 7.0.27
+          - 7.0.28
+          - 7.0.29
+          - 7.0.30
+          - 7.2.0
+          - 7.2.1
+          - 7.2.2
+          - 7.2.3
+          - 7.2.4
+          - 7.2.5
+          - 7.2.6
+          - 7.2.7
+          - 7.2.8
+          - 7.2.9
+          - 7.2.10
+          - 7.2.11
+          - 7.2.12
+          - 7.2.13
+          - 7.2.14
+          - 7.2.15
+          - 7.4.0
+          - 7.4.1
+          - 7.4.2
+          - 7.4.3
+          - 7.4.4
+          - 7.4.5
+          - 7.4.6
+          - 7.4.7
+          - 7.4.8
+          - 7.4.9
+          - 7.4.10
+          - 7.4.11
+          - 7.4.12
+          - 7.4.13
+          - 7.4.14
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Build plugin
+        run: CGO_ENABLED=0 go build -o zabbix-agent2-plugin-package-updates ./cmd/agent
+
+      - name: Test Agent 2 plugin socket protocol
+        env:
+          AGENT_IMAGE: zabbix/zabbix-agent2:alpine-${{ matrix.version }}
+          FAKE_DNF_HISTORY: populated
+        run: |
+          chmod +x .github/ci/zabbix-agent2/fakebin/*
+          docker pull "$AGENT_IMAGE"
+          started=$SECONDS
+          output="$(docker run --rm \
+            --user zabbix \
+            --env FAKE_DNF_HISTORY \
+            --volume "$GITHUB_WORKSPACE/zabbix-agent2-plugin-package-updates:/tmp/zabbix-agent2-plugin-package-updates:ro" \
+            --volume "$GITHUB_WORKSPACE/.github/ci/zabbix-agent2/package-updates.conf:/etc/zabbix/zabbix_agent2.d/plugins.d/package-updates.conf:ro" \
+            --volume "$GITHUB_WORKSPACE/.github/ci/zabbix-agent2/fakebin:/tmp/fakebin:ro" \
+            "$AGENT_IMAGE" \
+            /bin/sh -c '
+              PATH=/tmp/fakebin:$PATH zabbix_agent2 -t dnf.get
+              PATH=/tmp/fakebin:$PATH zabbix_agent2 -t packages.get
+              PATH=/tmp/fakebin:$PATH zabbix_agent2 -t dnf.advisories.get
+            ')"
+          duration=$((SECONDS - started))
+          if (( duration >= 20 )); then
+            printf 'collection took %d seconds; release threshold is below 20 seconds\n' "$duration" >&2
+            exit 1
+          fi
+
+          OUTPUT="$output" python3 - <<'PY'
+          import json
+          import os
+          import re
+
+          output = os.environ["OUTPUT"]
+
+          def item_payload(key):
+              match = re.search(rf"{re.escape(key)}\s+\[s\|(\{{[^\n]*\}})\]", output)
+              if match is None:
+                  raise SystemExit(f"{key} did not return a supported string value: {output!r}")
+              return json.loads(match.group(1))
+
+          payload = item_payload("dnf.get")
+          assert payload["classification"] == {
+              "complete": True,
+              "failed_categories": [],
+          }
+          assert payload["summary"]["repositories"] == 1
+          assert payload["summary"]["updates"] == 1
+          assert payload["summary"]["update_types"] == {
+              "security": 0,
+              "bugfix": 0,
+              "enhancement": 0,
+              "other": 1,
+          }
+          assert payload["repositories"] == [{
+              "id": "test",
+              "name": "Test repository",
+              "update_count": 1,
+          }]
+          assert payload["updates"][0]["name"] == "example"
+
+          last_update = payload["summary"]["last_update"]
+          if os.environ["FAKE_DNF_HISTORY"] == "populated":
+              assert last_update["result"] == "success"
+          else:
+              assert last_update == {
+                  "timestamp": None,
+                  "result": "not_recorded",
+              }
+
+          generic = item_payload("packages.get")
+          assert generic["schema_version"] == 1
+          assert generic["backend"] == "dnf"
+          assert generic["capabilities"] == {
+              "classification": {
+                  "security": "supported",
+                  "bugfix": "supported",
+                  "enhancement": "supported",
+                  "other": "supported",
+              },
+              "repository_attribution": "supported",
+              "reboot_detection": "supported",
+              "last_update": "supported",
+              "metadata_age": "unsupported",
+          }
+          assert generic["metadata"] == {
+              "refreshed_at": None,
+              "age_seconds": None,
+          }
+          assert generic["summary"] == payload["summary"]
+          assert generic["repositories"] == payload["repositories"]
+          assert generic["updates"] == [{
+              **payload["updates"][0],
+              "type": "other",
+              "full_version": "0:2.0-1",
+              "identifier": "example-0:2.0-1.x86_64",
+          }]
+
+          advisories = item_payload("dnf.advisories.get")
+          assert advisories["schema_version"] == 1
+          assert advisories["collection"]["complete"] is True
+          assert advisories["metadata"] == {
+              "details_complete": False,
+              "cves_complete": False,
+              "issue_dates_complete": False,
+          }
+          assert advisories["summary"]["advisories"] == 1
+          assert advisories["summary"]["unique_cves"] == 0
+          assert advisories["advisories"] == [{
+              "id": "TEST-2026:1",
+              "type": "security",
+              "severity": "important",
+              "title": "",
+              "issued_at": None,
+              "updated_at": None,
+              "cve_ids": [],
+              "affected_update_nevras": ["example-0:2.0-1.x86_64"],
+          }]
+          PY
+
+          printf '%s\n' "$output"
+          printf 'collection completed in %d seconds\n' "$duration"

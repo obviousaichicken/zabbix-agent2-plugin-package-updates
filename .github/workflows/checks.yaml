@@ -1,0 +1,92 @@
+name: Pre-release Checks
+
+on:
+  workflow_call:
+  pull_request:
+  merge_group:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Code Quality and Security Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Run unit tests
+        run: go test ./...
+
+      - name: Run tests with race detector
+        run: go test -race ./...
+
+      - name: Run Go vet
+        run: go vet ./...
+
+      - name: Validate installer scripts
+        run: |
+          sh -n install.sh
+          sh -n .dev/installer-test/dnf
+
+      - name: Scan for vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+      - name: Verify module files are tidy
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
+  template:
+    name: Zabbix Template Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate template contracts
+        run: ruby .github/ci/validate_templates.rb
+
+      - name: Start Zabbix test environment
+        run: |
+          docker compose \
+            --env-file .dev/.env \
+            -f .dev/docker-compose.yaml \
+            up -d zbx70_database zbx70_server zbx70_web
+
+      - name: Import and validate Zabbix template
+        run: |
+          docker compose \
+            --env-file .dev/.env \
+            -f .dev/docker-compose.yaml \
+            run --rm --no-deps \
+            -e ZBX_TEMPLATE_ONLY=1 \
+            zbx70_bootstrap
+
+      - name: Show Zabbix logs on failure
+        if: failure()
+        run: |
+          docker compose \
+            --env-file .dev/.env \
+            -f .dev/docker-compose.yaml \
+            logs --no-color \
+            zbx70_database zbx70_server zbx70_web
+
+      - name: Stop Zabbix test environment
+        if: always()
+        run: |
+          docker compose \
+            --env-file .dev/.env \
+            -f .dev/docker-compose.yaml \
+            down -v --remove-orphans

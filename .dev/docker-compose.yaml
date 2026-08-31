@@ -71,6 +71,7 @@ services:
       - zbx70_fedora43_agent
       - zbx70_fedora44_agent
       - zbx70_fedora44_agent_active
+      - zbx70_rocky8_agent
       - zbx70_rocky9_agent
       - zbx70_rocky10_agent
       - zbx70_alma9_agent
@@ -182,6 +183,21 @@ services:
         AGENT_CONFIG: .dev/zabbix_agent2_active.conf
     container_name: zbx70_fedora44_agent_active
     hostname: zbx70-fedora44-agent-active
+    depends_on:
+      - zbx70_server
+    networks:
+      - zbx70_network
+    restart: unless-stopped
+
+  zbx70_rocky8_agent:
+    build:
+      context: ..
+      dockerfile: .dev/Dockerfile.dnf
+      args:
+        BASE_IMAGE: rockylinux/rockylinux:8.8
+        ZABBIX_RHEL_VERSION: '8'
+    container_name: zbx70_rocky8_agent
+    hostname: zbx70-rocky8-agent
     depends_on:
       - zbx70_server
     networks:

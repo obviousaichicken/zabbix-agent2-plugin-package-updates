@@ -105,8 +105,8 @@ func (c *Client) capabilities(ctx context.Context) (commandCapabilities, error) 
 
 	output := strings.TrimSpace(string(result.Stdout))
 	if !strings.HasPrefix(output, dnf5VersionPrefix) {
-		// Preserve the legacy behavior: any non-DNF5 version output selects the
-		// DNF4 command family. Parse it opportunistically for shared consumers.
+		// DNF4 version output varies across distributions, so any output without
+		// the DNF5 prefix selects the DNF4 command family.
 		version, _ := ParseDNFVersion(result.Stdout)
 
 		return commandCapabilities{Version: version}, nil

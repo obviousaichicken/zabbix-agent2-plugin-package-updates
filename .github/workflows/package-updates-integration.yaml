@@ -48,6 +48,10 @@ jobs:
             image: fedora:44
             dockerfile: .dev/Dockerfile.dnf
             build-args: BASE_IMAGE=fedora:44 ZABBIX_RHEL_VERSION=10 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.4/release/rhel/10/noarch/zabbix-release-latest.el10.noarch.rpm
+          - name: Rocky Linux 8 / DNF4
+            image: rockylinux/rockylinux:8
+            dockerfile: .dev/Dockerfile.dnf
+            build-args: BASE_IMAGE=rockylinux/rockylinux:8 ZABBIX_RHEL_VERSION=8
           - name: Rocky Linux 9 / DNF
             image: rockylinux/rockylinux:9
             dockerfile: .dev/Dockerfile.dnf
@@ -56,6 +60,10 @@ jobs:
             image: rockylinux/rockylinux:10
             dockerfile: .dev/Dockerfile.dnf
             build-args: BASE_IMAGE=rockylinux/rockylinux:10 ZABBIX_RHEL_VERSION=10
+          - name: AlmaLinux 8 / DNF4
+            image: almalinux:8
+            dockerfile: .dev/Dockerfile.dnf
+            build-args: BASE_IMAGE=almalinux:8 ZABBIX_RHEL_VERSION=8
           - name: AlmaLinux 9 / DNF
             image: almalinux:9
             dockerfile: .dev/Dockerfile.dnf
@@ -64,6 +72,18 @@ jobs:
             image: almalinux:10
             dockerfile: .dev/Dockerfile.dnf
             build-args: BASE_IMAGE=almalinux:10 ZABBIX_RHEL_VERSION=10
+          - name: Oracle Linux 8 / DNF4
+            image: oraclelinux:8
+            dockerfile: .dev/Dockerfile.dnf
+            build-args: BASE_IMAGE=oraclelinux:8 ZABBIX_RHEL_VERSION=8
+          - name: Oracle Linux 9 / DNF
+            image: oraclelinux:9
+            dockerfile: .dev/Dockerfile.dnf
+            build-args: BASE_IMAGE=oraclelinux:9 ZABBIX_RHEL_VERSION=9
+          - name: Oracle Linux 10 / DNF
+            image: oraclelinux:10
+            dockerfile: .dev/Dockerfile.dnf
+            build-args: BASE_IMAGE=oraclelinux:10 ZABBIX_RHEL_VERSION=10
           - name: CentOS Stream 9 / DNF
             image: quay.io/centos/centos:stream9
             dockerfile: .dev/Dockerfile.dnf
@@ -119,7 +139,7 @@ jobs:
 
       - name: Test installed Agent 2 plugin
         run: |
-          for item_key in dnf.get packages.get dnf.advisories.get; do
+          for item_key in packages.get dnf.advisories.get; do
             output="$(docker run --rm \
               --user zabbix \
               --entrypoint /usr/sbin/zabbix_agent2 \
@@ -273,75 +293,25 @@ jobs:
           printf '%s\n' "$output"
 
   agent2:
-    name: Agent 2 protocol compatibility / ${{ matrix.version }}
+    name: Agent 2 protocol representative / ${{ matrix.version }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: 6
       matrix:
+        # The external-plugin protocol is branch-level. Exercise the first,
+        # midpoint, and current patch instead of repeating the same socket
+        # contract for every patch release.
         version:
           - 7.0.0
-          - 7.0.1
-          - 7.0.2
-          - 7.0.3
-          - 7.0.4
-          - 7.0.5
-          - 7.0.6
-          - 7.0.7
-          - 7.0.8
-          - 7.0.9
-          - 7.0.10
-          - 7.0.11
-          - 7.0.12
-          - 7.0.13
-          - 7.0.14
           - 7.0.15
-          - 7.0.16
-          - 7.0.17
-          - 7.0.18
-          - 7.0.19
-          - 7.0.20
-          - 7.0.21
-          - 7.0.22
-          - 7.0.23
-          - 7.0.24
-          - 7.0.25
-          - 7.0.26
-          - 7.0.27
-          - 7.0.28
-          - 7.0.29
           - 7.0.30
           - 7.2.0
-          - 7.2.1
-          - 7.2.2
-          - 7.2.3
-          - 7.2.4
-          - 7.2.5
-          - 7.2.6
-          - 7.2.7
           - 7.2.8
-          - 7.2.9
-          - 7.2.10
-          - 7.2.11
-          - 7.2.12
-          - 7.2.13
-          - 7.2.14
           - 7.2.15
           - 7.4.0
-          - 7.4.1
-          - 7.4.2
-          - 7.4.3
-          - 7.4.4
-          - 7.4.5
-          - 7.4.6
           - 7.4.7
-          - 7.4.8
-          - 7.4.9
-          - 7.4.10
-          - 7.4.11
-          - 7.4.12
-          - 7.4.13
           - 7.4.14
 
     steps:
@@ -371,7 +341,6 @@ jobs:
             --volume "$GITHUB_WORKSPACE/.github/ci/zabbix-agent2/fakebin:/tmp/fakebin:ro" \
             "$AGENT_IMAGE" \
             /bin/sh -c '
-              PATH=/tmp/fakebin:$PATH zabbix_agent2 -t dnf.get
               PATH=/tmp/fakebin:$PATH zabbix_agent2 -t packages.get
               PATH=/tmp/fakebin:$PATH zabbix_agent2 -t dnf.advisories.get
             ')"
@@ -394,7 +363,25 @@ jobs:
                   raise SystemExit(f"{key} did not return a supported string value: {output!r}")
               return json.loads(match.group(1))
 
-          payload = item_payload("dnf.get")
+          payload = item_payload("packages.get")
+          assert payload["schema_version"] == 1
+          assert payload["backend"] == "dnf"
+          assert payload["capabilities"] == {
+              "classification": {
+                  "security": "supported",
+                  "bugfix": "supported",
+                  "enhancement": "supported",
+                  "other": "supported",
+              },
+              "repository_attribution": "supported",
+              "reboot_detection": "supported",
+              "last_update": "supported",
+              "metadata_age": "unsupported",
+          }
+          assert payload["metadata"] == {
+              "refreshed_at": None,
+              "age_seconds": None,
+          }
           assert payload["classification"] == {
               "complete": True,
               "failed_categories": [],
@@ -412,7 +399,17 @@ jobs:
               "name": "Test repository",
               "update_count": 1,
           }]
-          assert payload["updates"][0]["name"] == "example"
+          assert payload["updates"] == [{
+              "repository_id": "test",
+              "name": "example",
+              "epoch": "0",
+              "version": "2.0",
+              "release": "1",
+              "arch": "x86_64",
+              "type": "other",
+              "full_version": "0:2.0-1",
+              "identifier": "example-0:2.0-1.x86_64",
+          }]
 
           last_update = payload["summary"]["last_update"]
           if os.environ["FAKE_DNF_HISTORY"] == "populated":
@@ -422,34 +419,6 @@ jobs:
                   "timestamp": None,
                   "result": "not_recorded",
               }
-
-          generic = item_payload("packages.get")
-          assert generic["schema_version"] == 1
-          assert generic["backend"] == "dnf"
-          assert generic["capabilities"] == {
-              "classification": {
-                  "security": "supported",
-                  "bugfix": "supported",
-                  "enhancement": "supported",
-                  "other": "supported",
-              },
-              "repository_attribution": "supported",
-              "reboot_detection": "supported",
-              "last_update": "supported",
-              "metadata_age": "unsupported",
-          }
-          assert generic["metadata"] == {
-              "refreshed_at": None,
-              "age_seconds": None,
-          }
-          assert generic["summary"] == payload["summary"]
-          assert generic["repositories"] == payload["repositories"]
-          assert generic["updates"] == [{
-              **payload["updates"][0],
-              "type": "other",
-              "full_version": "0:2.0-1",
-              "identifier": "example-0:2.0-1.x86_64",
-          }]
 
           advisories = item_payload("dnf.advisories.get")
           assert advisories["schema_version"] == 1

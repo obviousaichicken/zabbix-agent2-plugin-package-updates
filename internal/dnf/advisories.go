@@ -5,8 +5,7 @@ import (
 )
 
 // SecurityAdvisories returns applicable security advisories independently of
-// the legacy package snapshot. It is not registered as an Agent 2 item until
-// the complete DNF4/DNF5 result contract is available.
+// the package snapshot.
 func (c *Client) SecurityAdvisories(ctx context.Context) (AdvisoryData, error) {
 	capabilities, err := c.capabilities(ctx)
 	if err != nil {

@@ -60,28 +60,6 @@ func TestBuildPackagesAPTGolden(t *testing.T) {
 	}
 }
 
-func TestBuildPackagesPreservesDNFLegacyFacts(t *testing.T) {
-	t.Parallel()
-
-	snapshot := dnfSnapshot()
-	legacy, err := results.BuildLegacy(snapshot.Repositories, snapshot.Updates)
-	if err != nil {
-		t.Fatalf("BuildLegacy() error = %v", err)
-	}
-	generic, err := results.BuildPackages(snapshot)
-	if err != nil {
-		t.Fatalf("BuildPackages() error = %v", err)
-	}
-
-	if generic.Summary.Repositories != legacy.Summary.Repositories ||
-		generic.Summary.Updates != legacy.Summary.Updates ||
-		generic.Summary.UpdateTypes != legacy.Summary.UpdateTypes ||
-		len(generic.Repositories) != len(legacy.Repositories) ||
-		len(generic.Updates) != len(legacy.Updates) {
-		t.Fatalf("generic facts = %#v, legacy facts = %#v", generic.Summary, legacy.Summary)
-	}
-}
-
 func TestBuildPackagesEmptyArrays(t *testing.T) {
 	t.Parallel()
 

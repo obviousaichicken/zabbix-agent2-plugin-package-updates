@@ -261,7 +261,6 @@ fi
 
 case "$package_backend" in
 dnf)
-	test_agent_item dnf.get ""
 	test_agent_item packages.get dnf
 	;;
 apt) test_agent_item packages.get apt ;;

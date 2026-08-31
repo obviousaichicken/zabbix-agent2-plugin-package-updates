@@ -69,7 +69,7 @@ jobs:
                     --setopt=install_weak_deps=False \
                     zabbix-agent2 >/dev/null
                   dnf -q makecache >/dev/null
-                  item_keys="dnf.get packages.get dnf.advisories.get"
+                  item_keys="packages.get dnf.advisories.get"
                   expected_backend=dnf
                   ;;
                 deb)

@@ -104,7 +104,7 @@ func TestClientCapabilities(t *testing.T) {
 		wantHistoryJSON bool
 	}{
 		{name: "DNF4", output: "4.20.0\n"},
-		{name: "legacy malformed DNF4 output", output: "legacy output\n"},
+		{name: "unparseable DNF4 output", output: "vendor output\n"},
 		{name: "DNF5 before history JSON", output: "dnf5 version 5.2.18.0\n", wantDNF5: true},
 		{name: "DNF5 with history JSON", output: "dnf5 version 5.4.0.0\n", wantDNF5: true, wantHistoryJSON: true},
 		{name: "future DNF5", output: "dnf5 version 6.0.0\n", wantDNF5: true, wantHistoryJSON: true},

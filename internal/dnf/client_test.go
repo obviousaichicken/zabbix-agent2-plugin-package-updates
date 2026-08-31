@@ -14,7 +14,7 @@ import (
 	"github.com/obviousaichicken/zabbix-agent2-plugin-package-updates/internal/packageinfo"
 )
 
-func TestLegacyCollectionCommandContract(t *testing.T) {
+func TestCollectionCommandContract(t *testing.T) {
 	t.Parallel()
 
 	runner := &fakeRunner{responses: []fakeResponse{
@@ -82,7 +82,7 @@ func TestLegacyCollectionCommandContract(t *testing.T) {
 	}
 
 	if len(runner.requests) != len(want) {
-		t.Fatalf("legacy collection ran %d commands, want %d", len(runner.requests), len(want))
+		t.Fatalf("collection ran %d commands, want %d", len(runner.requests), len(want))
 	}
 	for index, request := range runner.requests {
 		if request.Name != want[index].name || !slices.Equal(request.Args, want[index].args) {

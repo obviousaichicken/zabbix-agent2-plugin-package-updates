@@ -13,7 +13,7 @@ It reports:
 * Reboot status and the result of the last package transaction
 * The age of local package metadata on APT hosts
 
-Use `packages.get` on either backend. The older `dnf.get` key remains available for existing DNF templates, and `dnf.advisories.get` collects DNF advisory details on its own schedule.
+Use `packages.get` on either backend. DNF hosts additionally expose `dnf.advisories.get` for advisory details on an independent schedule.
 
 <img width="1905" height="1016" alt="Screenshot From 2026-08-21 20-38-47" src="https://github.com/user-attachments/assets/ea31ef4a-861f-4865-8748-1dcf3f474762" />
 
@@ -83,16 +83,13 @@ Backend detection is automatic. Most installations do not need anything beyond t
 ### Troubleshooting
 
 ```bash
-# Test the neutral item on either backend
+# Test package collection on either backend
 sudo -u zabbix zabbix_agent2 -c /etc/zabbix/zabbix_agent2.conf -t packages.get
-
-# Test the legacy DNF item on a DNF host
-sudo -u zabbix zabbix_agent2 -c /etc/zabbix/zabbix_agent2.conf -t dnf.get
 
 # Test the independently scheduled advisory item on a DNF host
 sudo -u zabbix zabbix_agent2 -c /etc/zabbix/zabbix_agent2.conf -t dnf.advisories.get
 
-# Run the collector directly on a DNF host
+# Run package collection directly
 sudo /usr/sbin/zabbix-agent2-plugin/zabbix-agent2-plugin-package-updates --test
 
 # Check for SELinux policy denials
@@ -137,9 +134,9 @@ Import the file from **Data collection > Templates > Import**, then link one tem
 
 |Name|Description|Type|Key and additional info|
 |----|-----------|----|-----------------------|
-|DNF: Get update data|Collects package, repository, advisory, reboot, and update-history data. Dependent items extract the values, so the raw JSON is not stored.|Zabbix agent|dnf.get|
+|DNF: Get update data|Collects package, repository, classification, reboot, and update-history data. Dependent items extract the values, so the raw JSON is not stored.|Zabbix agent|packages.get|
 |DNF: Get advisory data|Collects applicable DNF security advisories independently from package-update monitoring.|Zabbix agent|dnf.advisories.get, interval `{$DNF.ADVISORY.UPDATE.INTERVAL}`, history disabled, 30-second timeout|
-|DNF: Advisory discovery data|Validates completeness and the five selection macros, then projects compact records for discovery. It becomes unsupported on invalid or incomplete input instead of publishing a false empty list.|Dependent item|dnf.advisory.discovery.data, history disabled|
+|DNF: Advisory discovery data|Projects compact discovery records. With every selection macro disabled it returns an empty array; enabled discovery requires complete advisory metadata and fails closed on incomplete input.|Dependent item|dnf.advisory.discovery.data, history disabled|
 |DNF: Collection complete|Indicates whether the plugin completed every required DNF query. Failed collections make the master item unsupported and are also detected by the no-data condition.|Dependent item|dnf.collection.complete|
 |DNF: Collection duration|Time spent collecting the complete DNF payload, in seconds.|Dependent item|dnf.collection.duration|
 |DNF: Advisory classification complete|Indicates that all advisory categories were classified successfully. Strict classification failures make the master collection fail instead of publishing partial category counts.|Dependent item|dnf.classification.complete|
@@ -152,13 +149,13 @@ Import the file from **Data collection > Templates > Import**, then link one tem
 |DNF: Updates pending enhancement|Number of available package updates classified by repository advisory metadata as enhancements.|Dependent item|dnf.updates.enhancement|
 |DNF: Updates pending other|Number of available package updates with no supported advisory category. This can include missing or unrecognized advisory metadata and does not necessarily mean non-security updates.|Dependent item|dnf.updates.other|
 |DNF: Last update result|Result of the most recent completed DNF transaction that upgraded a package: 0 means not recorded, 1 means success, and 2 means failed.|Dependent item|dnf.last_update.result|
-|DNF: Last update time|Unix timestamp of the most recent completed DNF transaction that upgraded a package. No value is stored when no such transaction exists.|Dependent item|dnf.last_update.timestamp|
+|DNF: Last update time|Unix timestamp of the most recent completed DNF transaction that upgraded a package, or `0` when none is recorded.|Dependent item|dnf.last_update.timestamp|
 |DNF: Advisory collection health|Independent completion and duration telemetry.|Dependent items|dnf.advisory.collection.complete, dnf.advisory.collection.duration|
 |DNF: Advisory metadata completeness|Reports whether detail, CVE, and true issue-date metadata are complete.|Dependent items|dnf.advisory.details.complete, dnf.advisory.cves.complete, dnf.advisory.issue_dates.complete|
 |DNF: Advisory and CVE totals|Counts unique advisory IDs and known CVE IDs.|Dependent items|dnf.advisory.total, dnf.advisory.cves|
 |DNF: Advisories by severity|Counts Critical, Important, Moderate, Low, and Unknown advisory IDs.|Dependent items|dnf.advisory.critical, dnf.advisory.important, dnf.advisory.moderate, dnf.advisory.low, dnf.advisory.unknown|
 |DNF: Affected updates by severity|Counts unique pending package updates once at their highest linked advisory severity.|Dependent items|dnf.advisory.packages.critical, dnf.advisory.packages.important, dnf.advisory.packages.moderate, dnf.advisory.packages.low, dnf.advisory.packages.unknown|
-|DNF: Oldest advisory vendor time|Reports the oldest preferred vendor timestamp, its age, and whether its basis is `issued`, `updated`, or `none`.|Dependent items|dnf.advisory.oldest.timestamp, dnf.advisory.oldest.age, dnf.advisory.oldest.basis|
+|DNF: Oldest advisory vendor time|Reports the oldest preferred vendor timestamp and age, using `0` when unknown; the basis item reports `issued`, `updated`, or `none`.|Dependent items|dnf.advisory.oldest.timestamp, dnf.advisory.oldest.age, dnf.advisory.oldest.basis|
 
 **Triggers**
 
@@ -210,6 +207,8 @@ Trigger severity follows advisory severity: Disaster for Critical, High for Impo
 
 Each matching advisory adds five items and one trigger. Start with Critical only, or Critical and Important, and watch the number of discovered objects. Advisory payloads are limited to 8 MiB.
 
+With all five discovery macros at their default `0`, the discovery data item remains supported and returns an empty array even when a repository cannot provide complete titles, CVEs, or issue dates. Enabling any severity keeps the stricter metadata requirement so incomplete input cannot make existing advisories disappear falsely.
+
 To enable discovery on a DNF5 host:
 
 1. Confirm that `dnf.advisories.get` is supported and that `dnf.advisory.collection.complete`, `dnf.advisory.details.complete`, `dnf.advisory.cves.complete`, and `dnf.advisory.issue_dates.complete` all report `1`.
@@ -253,16 +252,17 @@ All listed distributions are supported on Linux x86_64 and exercised in CI:
 
 |Backend|Distribution versions|
 |-------|---------------------|
-|DNF|RHEL/UBI 8, 9, and 10; Fedora 43 and 44; Rocky Linux 9 and 10; AlmaLinux 9 and 10; CentOS Stream 9 and 10|
+|DNF|RHEL/UBI 8, 9, and 10; Fedora 43 and 44; Rocky Linux 8, 9, and 10; AlmaLinux 8, 9, and 10; Oracle Linux 8, 9, and 10; CentOS Stream 9 and 10|
 |APT|Debian 12 and 13; Ubuntu 22.04, 24.04, and 26.04|
 
 One plugin binary supports the released `zabbix-agent2` versions in the 7.0, 7.2, and 7.4 branches.
+CI runs the full collector, installer, and installed-plugin checks on every distribution above. Agent 2 socket compatibility uses the first, midpoint, and current patch from each supported branch because the external-plugin protocol is branch-level rather than patch-specific.
 
 DNF reboot status is determined from reboot-sensitive RPM install times and installed kernel packages compared with the running kernel. The plugin supports DNF4 and DNF5 without depending on an optional DNF reboot-detection plugin. APT reboot status follows `/run/reboot-required`.
 
 ### How DNF advisories work
 
-`dnf.advisories.get` is separate from `dnf.get` and `packages.get`, so package snapshots can run every 15 minutes while the more expensive advisory check runs hourly. Advisory output is limited to 8 MiB. The collector does not run a command for every advisory:
+`dnf.advisories.get` is separate from `packages.get`, so package snapshots can run every 15 minutes while the more expensive advisory check runs hourly. Advisory output is limited to 8 MiB. The collector does not run a command for every advisory:
 
 * DNF4 runs `updateinfo list --updates --security` after checking the DNF version. Fetching full details can exceed Agent 2's 30-second deadline on some releases, so DNF4 reports IDs, severities, and affected packages but not titles, CVEs, or dates.
 * DNF5 runs one JSON list command and one JSON info command. Only advisories and packages from the applicable-update list are included in the result.
@@ -331,13 +331,13 @@ Only recognized official security pockets are counted as security updates; all o
 
 Run the installer again, test the item keys, then import the template from the same release. Install the binary before importing the template so its keys are already available.
 
-The `dnf.get`, `packages.get`, and `dnf.advisories.get` keys and template UUIDs are kept between releases. If you are upgrading from the predecessor plugin, remove its Agent 2 configuration before enabling `package-updates.conf`. Loading both plugins registers duplicate metric keys.
+The package and advisory item keys are `packages.get` and `dnf.advisories.get`. Install the binary before importing its matching template so every referenced key is available.
 
 ### Rollback
 
 Use the binary, checksum, configuration, and template from the same earlier release. Import the older template before replacing the binary. A newer binary can serve the older template, but an older binary may not provide keys used by the newer template.
 
-For example, download the selected tagged assets, verify the checksum, stop Agent 2, replace the plugin binary and configuration, then restart and test `dnf.get`:
+For example, download the selected tagged assets, verify the checksum, stop Agent 2, replace the plugin binary and configuration, then restart and test package collection:
 
 ```bash
 release=vX.Y.Z
@@ -351,11 +351,8 @@ sudo systemctl stop zabbix-agent2
 sudo install -m 0755 zabbix-agent2-plugin-package-updates /usr/sbin/zabbix-agent2-plugin/zabbix-agent2-plugin-package-updates
 sudo install -m 0644 package-updates.conf /etc/zabbix/zabbix_agent2.d/plugins.d/package-updates.conf
 sudo systemctl start zabbix-agent2
-sudo -u zabbix zabbix_agent2 -c /etc/zabbix/zabbix_agent2.conf -t dnf.get
 sudo -u zabbix zabbix_agent2 -c /etc/zabbix/zabbix_agent2.conf -t packages.get
 ```
-
-Remove `Plugins.PackageUpdates.Backend` before rolling back to a release that predates backend selection. Rolling back to a DNF-only release stops APT monitoring but does not change packages or APT metadata on the host.
 
 ## Notes and limitations
 
@@ -383,7 +380,7 @@ Start the local Zabbix/DNF lab with:
 docker compose -f .dev/docker-compose.yaml up --build
 ```
 
-The lab builds the supported DNF images, installs the plugin, starts passive and active Agent 2 hosts, and imports all four templates. APT distribution coverage runs in CI.
+The lab builds a representative DNF set, installs the plugin, starts passive and active Agent 2 hosts, and imports all four templates. The broader DNF and APT distribution matrix runs in CI.
 
 ## Build from source
 

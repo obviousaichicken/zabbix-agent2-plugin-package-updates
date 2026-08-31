@@ -337,15 +337,7 @@ func TestPluginInitializesBackendOnceForConcurrentExports(t *testing.T) {
 				Packages: packageCollectorFunc(func(context.Context) (packageinfo.Snapshot, error) {
 					collectionCalls.Add(1)
 
-					return packageinfo.Snapshot{
-						Backend:      packageinfo.BackendDNF,
-						Repositories: []packageinfo.Repository{{ID: "updates", Name: "Updates"}},
-						Updates: []packageinfo.Update{{
-							Name:         "bash",
-							RepositoryID: "updates",
-							Type:         packageinfo.UpdateTypeOther,
-						}},
-					}, nil
+					return pluginDNFSnapshot(), nil
 				}),
 			}, nil
 		},
@@ -357,7 +349,7 @@ func TestPluginInitializesBackendOnceForConcurrentExports(t *testing.T) {
 	errs := make(chan error, workers)
 	for range workers {
 		wait.Go(func() {
-			_, err := p.Export(metricGet, nil, nil)
+			_, err := p.Export(metricPackagesGet, nil, nil)
 			errs <- err
 		})
 	}
@@ -403,7 +395,7 @@ func TestPluginStopCancelsConcurrentExports(t *testing.T) {
 	errs := make(chan error, workers)
 	for range workers {
 		go func() {
-			_, err := p.Export(metricGet, nil, nil)
+			_, err := p.Export(metricPackagesGet, nil, nil)
 			errs <- err
 		}()
 	}
@@ -417,7 +409,7 @@ func TestPluginStopCancelsConcurrentExports(t *testing.T) {
 			t.Fatalf("Export() error = %v, want context canceled", err)
 		}
 	}
-	if _, err := p.Export(metricGet, nil, nil); !errors.Is(err, errPluginStopping) {
+	if _, err := p.Export(metricPackagesGet, nil, nil); !errors.Is(err, errPluginStopping) {
 		t.Fatalf("Export() after Stop() error = %v, want plugin stopping", err)
 	}
 }
@@ -437,13 +429,6 @@ func TestPluginExportRejectsInvalidRequest(t *testing.T) {
 			key:     "unsupported",
 			wantErr: errUnsupportedItemKey,
 			want:    `unsupported item key "unsupported"`,
-		},
-		{
-			name:    "item key parameters",
-			key:     metricGet,
-			params:  []string{"unexpected"},
-			wantErr: errItemKeyParameters,
-			want:    "item key does not accept parameters: dnf.get",
 		},
 		{
 			name:    "packages item key parameters",
@@ -477,7 +462,7 @@ func TestPluginExportRejectsInvalidRequest(t *testing.T) {
 	}
 }
 
-func TestPluginAPTExportsGenericSchemaAndRejectsDNFKeys(t *testing.T) {
+func TestPluginAPTExportsPackageSchemaAndRejectsAdvisoryKey(t *testing.T) {
 	t.Parallel()
 
 	var collectionCalls atomic.Int64
@@ -513,17 +498,10 @@ func TestPluginAPTExportsGenericSchemaAndRejectsDNFKeys(t *testing.T) {
 		t.Fatalf("APT capabilities = %#v", capabilities)
 	}
 
-	for _, test := range []struct {
-		key  string
-		want string
-	}{
-		{key: metricGet, want: "dnf.get requires the DNF backend; detected apt"},
-		{key: metricAdvisoriesGet, want: "dnf.advisories.get requires the DNF backend; detected apt"},
-	} {
-		_, err := p.Export(test.key, nil, nil)
-		if err == nil || err.Error() != test.want {
-			t.Errorf("Export(%s) error = %q, want %q", test.key, err, test.want)
-		}
+	_, err = p.Export(metricAdvisoriesGet, nil, nil)
+	want := "dnf.advisories.get requires the DNF backend; detected apt"
+	if err == nil || err.Error() != want {
+		t.Errorf("Export(%s) error = %q, want %q", metricAdvisoriesGet, err, want)
 	}
 	if got := collectionCalls.Load(); got != 1 {
 		t.Errorf("APT collector calls = %d, want only packages.get collection", got)
@@ -564,7 +542,7 @@ func TestPluginDNFExportsAdvisorySchema(t *testing.T) {
 	}
 }
 
-func TestPluginExportDispatchesLegacyAndGenericSchemas(t *testing.T) {
+func TestPluginDNFExportsPackageAndAdvisorySchemas(t *testing.T) {
 	t.Parallel()
 
 	snapshot := pluginDNFSnapshot()
@@ -583,32 +561,17 @@ func TestPluginExportDispatchesLegacyAndGenericSchemas(t *testing.T) {
 	p.Start()
 	defer p.Stop()
 
-	legacyValue, err := p.Export(metricGet, nil, nil)
-	if err != nil {
-		t.Fatalf("Export(dnf.get) error = %v", err)
-	}
-	genericValue, err := p.Export(metricPackagesGet, nil, nil)
+	packageValue, err := p.Export(metricPackagesGet, nil, nil)
 	if err != nil {
 		t.Fatalf("Export(packages.get) error = %v", err)
 	}
 
-	var legacy map[string]any
-	if err := json.Unmarshal([]byte(legacyValue.(string)), &legacy); err != nil {
-		t.Fatalf("decode dnf.get: %v", err)
-	}
-	if _, exists := legacy["schema_version"]; exists {
-		t.Fatalf("dnf.get unexpectedly contains schema_version: %#v", legacy)
-	}
-
-	var generic map[string]any
-	if err := json.Unmarshal([]byte(genericValue.(string)), &generic); err != nil {
+	var packages map[string]any
+	if err := json.Unmarshal([]byte(packageValue.(string)), &packages); err != nil {
 		t.Fatalf("decode packages.get: %v", err)
 	}
-	if generic["schema_version"] != float64(1) || generic["backend"] != "dnf" {
-		t.Fatalf("packages.get schema = %#v", generic)
-	}
-	if legacySummary := legacy["summary"].(map[string]any); legacySummary["updates"] != generic["summary"].(map[string]any)["updates"] {
-		t.Fatalf("legacy and generic update facts differ: legacy=%#v generic=%#v", legacy, generic)
+	if packages["schema_version"] != float64(1) || packages["backend"] != "dnf" {
+		t.Fatalf("packages.get schema = %#v", packages)
 	}
 
 	advisoryValue, err := p.Export(metricAdvisoriesGet, nil, nil)
@@ -654,13 +617,11 @@ func TestPluginAdvisoryFailureIsIsolated(t *testing.T) {
 	if _, err := p.Export(metricAdvisoriesGet, nil, nil); !errors.Is(err, advisoryErr) {
 		t.Fatalf("Export(dnf.advisories.get) error = %v, want %v", err, advisoryErr)
 	}
-	for _, key := range []string{metricGet, metricPackagesGet} {
-		if _, err := p.Export(key, nil, nil); err != nil {
-			t.Fatalf("Export(%s) after advisory failure error = %v", key, err)
-		}
+	if _, err := p.Export(metricPackagesGet, nil, nil); err != nil {
+		t.Fatalf("Export(%s) after advisory failure error = %v", metricPackagesGet, err)
 	}
-	if packageCalls.Load() != 2 || advisoryCalls.Load() != 1 {
-		t.Fatalf("collector calls packages=%d advisories=%d, want 2/1", packageCalls.Load(), advisoryCalls.Load())
+	if packageCalls.Load() != 1 || advisoryCalls.Load() != 1 {
+		t.Fatalf("collector calls packages=%d advisories=%d, want 1/1", packageCalls.Load(), advisoryCalls.Load())
 	}
 }
 

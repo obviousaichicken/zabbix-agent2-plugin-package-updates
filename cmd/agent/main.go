@@ -23,7 +23,6 @@ import (
 
 const (
 	pluginName          = "PackageUpdates"
-	metricGet           = "dnf.get"
 	metricPackagesGet   = "packages.get"
 	metricAdvisoriesGet = "dnf.advisories.get"
 	testArg             = "--test"
@@ -67,13 +66,13 @@ func runCollection(stdout, stderr io.Writer) error {
 		slog.New(slog.NewTextHandler(stderr, nil)),
 	)
 
-	return collectAndWrite(ctx, stdout, pluginInstance.collect)
+	return collectAndWrite(ctx, stdout, pluginInstance.collectPackages)
 }
 
 func collectAndWrite(
 	parent context.Context,
 	stdout io.Writer,
-	collect func(context.Context) (results.Payload, error),
+	collect func(context.Context) (results.PackagePayload, error),
 ) error {
 	ctx, cancel := context.WithTimeout(parent, collectionTimeout)
 	defer cancel()
@@ -111,8 +110,6 @@ func runAgent() error {
 	err := plugin.RegisterMetrics(
 		pluginInstance,
 		pluginName,
-		metricGet,
-		"Returns package repositories, available updates, and reboot status.",
 		metricPackagesGet,
 		"Returns a package-manager-neutral package update snapshot.",
 		metricAdvisoriesGet,

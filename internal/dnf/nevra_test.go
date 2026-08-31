@@ -111,13 +111,13 @@ func TestNEVRAMatchKeyNormalizesAbsentEpoch(t *testing.T) {
 	}
 }
 
-func TestSetUpdateIdentityPreservesLegacyFormatting(t *testing.T) {
+func TestSetUpdateIdentityMatchesPackageIdentityFormatting(t *testing.T) {
 	t.Parallel()
 
 	for _, update := range []packageinfo.Update{
 		{Name: "bash", Epoch: "0", Version: "5.2", Release: "1.el9", Arch: "x86_64"},
 		{Name: "kernel-core", Version: "6.17", Release: "1.fc44", Arch: "x86_64"},
-		{Name: "legacy", Epoch: "(none)", Version: "1", Arch: "noarch"},
+		{Name: "example", Epoch: "(none)", Version: "1", Arch: "noarch"},
 	} {
 		want := update
 		packageinfo.SetIdentity(packageinfo.BackendDNF, &want)
@@ -136,7 +136,7 @@ func TestUpdatePackageKeyRemainsExact(t *testing.T) {
 	withEpoch := update
 	withEpoch.Epoch = "0"
 	if updatePackageKey(update) == updatePackageKey(withEpoch) {
-		t.Fatal("updatePackageKey normalized an epoch and changed legacy classification semantics")
+		t.Fatal("updatePackageKey normalized an epoch and changed classification semantics")
 	}
 	if !strings.HasSuffix(updatePackageKey(update), "\x00updates") {
 		t.Fatal("updatePackageKey omitted repository identity")

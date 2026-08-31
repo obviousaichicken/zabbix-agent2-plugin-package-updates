@@ -215,7 +215,7 @@ func (p *Plugin) Export(
 	params []string,
 	provider plugin.ContextProvider,
 ) (any, error) {
-	if key != metricGet && key != metricPackagesGet && key != metricAdvisoriesGet {
+	if key != metricPackagesGet && key != metricAdvisoriesGet {
 		return nil, fmt.Errorf("%w %q", errUnsupportedItemKey, key)
 	}
 
@@ -241,16 +241,6 @@ func (p *Plugin) Export(
 		backend       = packageinfo.BackendDNF
 	)
 	switch key {
-	case metricGet:
-		payload, err := p.collect(ctx)
-		if err != nil {
-			return nil, err
-		}
-		payload.Collection.DurationMS = time.Since(started).Milliseconds()
-		value = payload
-		repositories = payload.Summary.Repositories
-		updates = payload.Summary.Updates
-		rebootPending = payload.Summary.RebootPending
 	case metricPackagesGet:
 		payload, err := p.collectPackages(ctx)
 		if err != nil {
@@ -359,37 +349,6 @@ func requestTimeout(
 	}
 
 	return defaultTimeout
-}
-
-func (p *Plugin) collect(ctx context.Context) (results.Payload, error) {
-	runtime, err := p.loadBackend()
-	if err != nil {
-		p.logFailure(packageinfo.BackendDNF, "initialization", err)
-
-		return results.Payload{}, err
-	}
-	if runtime.Backend != packageinfo.BackendDNF {
-		return results.Payload{}, backendMismatchError(metricGet, runtime.Backend)
-	}
-
-	snapshot, err := runtime.Packages.Collect(ctx)
-	if err != nil {
-		p.logFailure(runtime.Backend, "packages", err)
-
-		return results.Payload{}, err
-	}
-
-	payload, err := results.BuildLegacy(snapshot.Repositories, snapshot.Updates)
-	if err != nil {
-		p.logFailure(runtime.Backend, "results", err)
-
-		return results.Payload{}, fmt.Errorf("build result: %w", err)
-	}
-
-	payload.Summary.LastUpdate = results.NewLastUpdate(snapshot.LastUpdate)
-	payload.Summary.RebootPending = snapshot.RebootPending
-
-	return payload, nil
 }
 
 func backendMismatchError(key string, backend packageinfo.Backend) error {

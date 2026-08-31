@@ -17,7 +17,7 @@ zabbix_export:
         - uuid: 361f3f08c10e4ce9aef5d78b98c0492a
           name: 'DNF: Get update data'
           type: ZABBIX_PASSIVE
-          key: dnf.get
+          key: packages.get
           delay: '{$DNF.UPDATE.INTERVAL}'
           history: '0'
           value_type: TEXT
@@ -51,7 +51,7 @@ zabbix_export:
           history: '0'
           value_type: TEXT
           trends: '0'
-          description: 'Validates the complete advisory payload and severity-selection macros, then projects the compact records shared by advisory discovery and its dependent item prototypes. The default macro values produce an empty array. Invalid or incomplete input makes this item unsupported instead of falsely marking discovered advisories absent.'
+          description: 'Validates the advisory payload and severity-selection macros, then projects the compact records shared by advisory discovery and its dependent item prototypes. When all discovery macros are disabled, incomplete optional detail, CVE, and issue-date metadata produces a valid empty array. Once any severity is enabled, incomplete input makes this item unsupported instead of falsely marking discovered advisories absent.'
           preprocessing:
             - type: JAVASCRIPT
               parameters:
@@ -65,10 +65,15 @@ zabbix_export:
                     unknown: '{$DNF.ADVISORY.LLD.UNKNOWN}'
                   };
 
+                  var discoveryEnabled = false;
                   for (var selectedSeverity in selections) {
                     if (Object.prototype.hasOwnProperty.call(selections, selectedSeverity) &&
                         selections[selectedSeverity] !== '0' && selections[selectedSeverity] !== '1') {
                       throw 'Advisory discovery macro for ' + selectedSeverity + ' must be exactly 0 or 1';
+                    }
+                    if (Object.prototype.hasOwnProperty.call(selections, selectedSeverity) &&
+                        selections[selectedSeverity] === '1') {
+                      discoveryEnabled = true;
                     }
                   }
 
@@ -78,13 +83,16 @@ zabbix_export:
                   if (!data.collection || data.collection.complete !== true) {
                     throw 'Advisory discovery requires a complete collection';
                   }
-                  if (!data.metadata || data.metadata.details_complete !== true ||
-                      data.metadata.cves_complete !== true || data.metadata.issue_dates_complete !== true) {
-                    throw 'Advisory discovery requires complete detail, CVE, and issue-date metadata';
-                  }
                   if (!Array.isArray(data.advisories) || !data.summary ||
                       data.summary.advisories !== data.advisories.length) {
                     throw 'Advisory discovery payload count is inconsistent';
+                  }
+                  if (!discoveryEnabled) {
+                    return '[]';
+                  }
+                  if (!data.metadata || data.metadata.details_complete !== true ||
+                      data.metadata.cves_complete !== true || data.metadata.issue_dates_complete !== true) {
+                    throw 'Advisory discovery requires complete detail, CVE, and issue-date metadata';
                   }
 
                   function safeIdentifier(id) {
@@ -557,14 +565,14 @@ zabbix_export:
           value_type: UNSIGNED
           units: unixtime
           trends: '0'
-          description: 'Unix timestamp of the oldest preferred vendor timestamp. Issue dates are preferred; Updated is used only when an issue date is unavailable. No value is stored when no vendor timestamp is known.'
+          description: 'Unix timestamp of the oldest preferred vendor timestamp. Issue dates are preferred; Updated is used only when an issue date is unavailable. The value is 0 when no vendor timestamp is known.'
           preprocessing:
             - type: JAVASCRIPT
               parameters:
                 - |
                   var timestamp = JSON.parse(value).summary.oldest_vendor_timestamp;
                   if (timestamp === null) {
-                    return null;
+                    return 0;
                   }
 
                   var milliseconds = Date.parse(timestamp);
@@ -584,14 +592,14 @@ zabbix_export:
           key: dnf.advisory.oldest.age
           value_type: UNSIGNED
           units: s
-          description: 'Age of the oldest preferred vendor timestamp in seconds. Future vendor timestamps are reported by the plugin as age zero.'
+          description: 'Age of the oldest preferred vendor timestamp in seconds. The value is 0 when no vendor timestamp is known; the timestamp-basis item distinguishes that case. Future vendor timestamps are also reported by the plugin as age zero.'
           preprocessing:
             - type: JAVASCRIPT
               parameters:
                 - |
                   var age = JSON.parse(value).summary.oldest_vendor_age_seconds;
                   if (age === null) {
-                    return null;
+                    return 0;
                   }
                   if (typeof age !== 'number' || age < 0 || !isFinite(age)) {
                     throw 'Invalid oldest vendor age';
@@ -646,7 +654,7 @@ zabbix_export:
             - type: BOOL_TO_DECIMAL
               parameters: []
           master_item:
-            key: dnf.get
+            key: packages.get
           tags:
             - tag: component
               value: updates
@@ -677,7 +685,7 @@ zabbix_export:
               parameters:
                 - '0.001'
           master_item:
-            key: dnf.get
+            key: packages.get
           tags:
             - tag: component
               value: updates
@@ -708,7 +716,7 @@ zabbix_export:
             - type: BOOL_TO_DECIMAL
               parameters: []
           master_item:
-            key: dnf.get
+            key: packages.get
           tags:
             - tag: component
               value: updates
@@ -723,7 +731,7 @@ zabbix_export:
               parameters:
                 - $.summary.updates
           master_item:
-            key: dnf.get
+            key: packages.get
           tags:
             - tag: component
               value: updates
@@ -738,7 +746,7 @@ zabbix_export:
               parameters:
                 - $.summary.repositories
           master_item:
-            key: dnf.get
+            key: packages.get
           tags:
             - tag: component
               value: updates
@@ -757,7 +765,7 @@ zabbix_export:
             - type: BOOL_TO_DECIMAL
               parameters: []
           master_item:
-            key: dnf.get
+            key: packages.get
           tags:
             - tag: component
               value: updates
@@ -776,7 +784,7 @@ zabbix_export:
             - type: BOOL_TO_DECIMAL
               parameters: []
           master_item:
-            key: dnf.get
+            key: packages.get
           tags:
             - tag: component
               value: updates
@@ -808,7 +816,7 @@ zabbix_export:
                   }
                   return data.summary.update_types.security;
           master_item:
-            key: dnf.get
+            key: packages.get
           tags:
             - tag: component
               value: updates
@@ -840,7 +848,7 @@ zabbix_export:
                   }
                   return data.summary.update_types.bugfix;
           master_item:
-            key: dnf.get
+            key: packages.get
           tags:
             - tag: component
               value: updates
@@ -860,7 +868,7 @@ zabbix_export:
                   }
                   return data.summary.update_types.enhancement;
           master_item:
-            key: dnf.get
+            key: packages.get
           tags:
             - tag: component
               value: updates
@@ -880,7 +888,7 @@ zabbix_export:
                   }
                   return data.summary.update_types.other;
           master_item:
-            key: dnf.get
+            key: packages.get
           tags:
             - tag: component
               value: updates
@@ -912,7 +920,7 @@ zabbix_export:
 
                   return results[result];
           master_item:
-            key: dnf.get
+            key: packages.get
           tags:
             - tag: component
               value: updates
@@ -935,14 +943,14 @@ zabbix_export:
           value_type: UNSIGNED
           units: unixtime
           trends: '0'
-          description: 'Unix timestamp of the most recent completed DNF transaction that upgraded a package. No value is stored when no such transaction exists.'
+          description: 'Unix timestamp of the most recent completed DNF transaction that upgraded a package. The value is 0 when no such transaction exists.'
           preprocessing:
             - type: JAVASCRIPT
               parameters:
                 - |
                   var data = JSON.parse(value);
                   if (data.summary.last_update.timestamp === null) {
-                    return null;
+                    return 0;
                   }
 
                   var timestamp = Date.parse(data.summary.last_update.timestamp);
@@ -952,7 +960,7 @@ zabbix_export:
 
                   return Math.floor(timestamp / 1000);
           master_item:
-            key: dnf.get
+            key: packages.get
           tags:
             - tag: component
               value: updates
@@ -980,7 +988,7 @@ zabbix_export:
                   parameters:
                     - '$.repositories[?(@.id == "{#REPO_ID}")].update_count.first()'
               master_item:
-                key: dnf.get
+                key: packages.get
               tags:
                 - tag: component
                   value: updates
@@ -1024,7 +1032,7 @@ zabbix_export:
 
                       return packages.join(', ');
               master_item:
-                key: dnf.get
+                key: packages.get
               tags:
                 - tag: component
                   value: updates
@@ -1033,7 +1041,7 @@ zabbix_export:
                 - tag: repository_name
                   value: '{#REPO_NAME}'
           master_item:
-            key: dnf.get
+            key: packages.get
           preprocessing:
             - type: JSONPATH
               parameters:
@@ -1052,7 +1060,7 @@ zabbix_export:
           lifetime: 30d
           enabled_lifetime_type: DISABLE_AFTER
           enabled_lifetime: 1d
-          description: 'Discovers only advisory severities explicitly enabled by the LLD macros. Lost advisory items remain enabled for one day so the presence value can become zero and recover the trigger, then remain disabled until deletion after 30 days. Invalid macros or incomplete metadata make discovery unsupported rather than returning a false empty list.'
+          description: 'Discovers only advisory severities explicitly enabled by the LLD macros. With every severity disabled, incomplete optional advisory metadata safely produces an empty discovery set. Lost advisory items remain enabled for one day so the presence value can become zero and recover the trigger, then remain disabled until deletion after 30 days. Invalid macros or incomplete metadata for enabled discovery make the rule unsupported rather than returning a false empty list.'
           item_prototypes:
             - uuid: 3aa7af243dfc48088a9e893ecd2c08b6
               name: 'DNF: Advisory [{#ADVISORY_ID}]: Presence'
@@ -1583,14 +1591,14 @@ zabbix_export:
           value_type: UNSIGNED
           units: unixtime
           trends: '0'
-          description: 'Best-effort Unix timestamp from retained APT history for the most recent completed package upgrade. No value is stored when no such transaction is recorded.'
+          description: 'Best-effort Unix timestamp from retained APT history for the most recent completed package upgrade. The value is 0 when no such transaction is recorded.'
           preprocessing:
             - type: JAVASCRIPT
               parameters:
                 - |
                   var data = JSON.parse(value);
                   if (data.summary.last_update.timestamp === null) {
-                    return null;
+                    return 0;
                   }
 
                   var timestamp = Date.parse(data.summary.last_update.timestamp);
@@ -1611,14 +1619,14 @@ zabbix_export:
           value_type: UNSIGNED
           units: unixtime
           trends: '0'
-          description: 'Unix timestamp of the oldest local APT binary index used by the collection. The plugin reports cached metadata and never refreshes it.'
+          description: 'Unix timestamp of the oldest local APT binary index used by the collection. The value is 0 when no refresh timestamp is available. The plugin reports cached metadata and never refreshes it.'
           preprocessing:
             - type: JAVASCRIPT
               parameters:
                 - |
                   var data = JSON.parse(value);
                   if (!data.metadata || data.metadata.refreshed_at === null) {
-                    return null;
+                    return 0;
                   }
 
                   var timestamp = Date.parse(data.metadata.refreshed_at);
@@ -2036,14 +2044,14 @@ zabbix_export:
           value_type: UNSIGNED
           units: unixtime
           trends: '0'
-          description: 'Best-effort Unix timestamp from retained APT history for the most recent completed package upgrade. No value is stored when no such transaction is recorded.'
+          description: 'Best-effort Unix timestamp from retained APT history for the most recent completed package upgrade. The value is 0 when no such transaction is recorded.'
           preprocessing:
             - type: JAVASCRIPT
               parameters:
                 - |
                   var data = JSON.parse(value);
                   if (data.summary.last_update.timestamp === null) {
-                    return null;
+                    return 0;
                   }
 
                   var timestamp = Date.parse(data.summary.last_update.timestamp);
@@ -2064,14 +2072,14 @@ zabbix_export:
           value_type: UNSIGNED
           units: unixtime
           trends: '0'
-          description: 'Unix timestamp of the oldest local APT binary index used by the collection. The plugin reports cached metadata and never refreshes it.'
+          description: 'Unix timestamp of the oldest local APT binary index used by the collection. The value is 0 when no refresh timestamp is available. The plugin reports cached metadata and never refreshes it.'
           preprocessing:
             - type: JAVASCRIPT
               parameters:
                 - |
                   var data = JSON.parse(value);
                   if (!data.metadata || data.metadata.refreshed_at === null) {
-                    return null;
+                    return 0;
                   }
 
                   var timestamp = Date.parse(data.metadata.refreshed_at);
@@ -2244,7 +2252,7 @@ zabbix_export:
         - uuid: f57b5a29ead94a4e88a7920a5f9fea4e
           name: 'DNF: Get update data'
           type: ZABBIX_ACTIVE
-          key: dnf.get
+          key: packages.get
           delay: '{$DNF.UPDATE.INTERVAL}'
           history: '0'
           value_type: TEXT
@@ -2278,7 +2286,7 @@ zabbix_export:
           history: '0'
           value_type: TEXT
           trends: '0'
-          description: 'Validates the complete advisory payload and severity-selection macros, then projects the compact records shared by advisory discovery and its dependent item prototypes. The default macro values produce an empty array. Invalid or incomplete input makes this item unsupported instead of falsely marking discovered advisories absent.'
+          description: 'Validates the advisory payload and severity-selection macros, then projects the compact records shared by advisory discovery and its dependent item prototypes. When all discovery macros are disabled, incomplete optional detail, CVE, and issue-date metadata produces a valid empty array. Once any severity is enabled, incomplete input makes this item unsupported instead of falsely marking discovered advisories absent.'
           preprocessing:
             - type: JAVASCRIPT
               parameters:
@@ -2292,10 +2300,15 @@ zabbix_export:
                     unknown: '{$DNF.ADVISORY.LLD.UNKNOWN}'
                   };
 
+                  var discoveryEnabled = false;
                   for (var selectedSeverity in selections) {
                     if (Object.prototype.hasOwnProperty.call(selections, selectedSeverity) &&
                         selections[selectedSeverity] !== '0' && selections[selectedSeverity] !== '1') {
                       throw 'Advisory discovery macro for ' + selectedSeverity + ' must be exactly 0 or 1';
+                    }
+                    if (Object.prototype.hasOwnProperty.call(selections, selectedSeverity) &&
+                        selections[selectedSeverity] === '1') {
+                      discoveryEnabled = true;
                     }
                   }
 
@@ -2305,13 +2318,16 @@ zabbix_export:
                   if (!data.collection || data.collection.complete !== true) {
                     throw 'Advisory discovery requires a complete collection';
                   }
-                  if (!data.metadata || data.metadata.details_complete !== true ||
-                      data.metadata.cves_complete !== true || data.metadata.issue_dates_complete !== true) {
-                    throw 'Advisory discovery requires complete detail, CVE, and issue-date metadata';
-                  }
                   if (!Array.isArray(data.advisories) || !data.summary ||
                       data.summary.advisories !== data.advisories.length) {
                     throw 'Advisory discovery payload count is inconsistent';
+                  }
+                  if (!discoveryEnabled) {
+                    return '[]';
+                  }
+                  if (!data.metadata || data.metadata.details_complete !== true ||
+                      data.metadata.cves_complete !== true || data.metadata.issue_dates_complete !== true) {
+                    throw 'Advisory discovery requires complete detail, CVE, and issue-date metadata';
                   }
 
                   function safeIdentifier(id) {
@@ -2784,14 +2800,14 @@ zabbix_export:
           value_type: UNSIGNED
           units: unixtime
           trends: '0'
-          description: 'Unix timestamp of the oldest preferred vendor timestamp. Issue dates are preferred; Updated is used only when an issue date is unavailable. No value is stored when no vendor timestamp is known.'
+          description: 'Unix timestamp of the oldest preferred vendor timestamp. Issue dates are preferred; Updated is used only when an issue date is unavailable. The value is 0 when no vendor timestamp is known.'
           preprocessing:
             - type: JAVASCRIPT
               parameters:
                 - |
                   var timestamp = JSON.parse(value).summary.oldest_vendor_timestamp;
                   if (timestamp === null) {
-                    return null;
+                    return 0;
                   }
 
                   var milliseconds = Date.parse(timestamp);
@@ -2811,14 +2827,14 @@ zabbix_export:
           key: dnf.advisory.oldest.age
           value_type: UNSIGNED
           units: s
-          description: 'Age of the oldest preferred vendor timestamp in seconds. Future vendor timestamps are reported by the plugin as age zero.'
+          description: 'Age of the oldest preferred vendor timestamp in seconds. The value is 0 when no vendor timestamp is known; the timestamp-basis item distinguishes that case. Future vendor timestamps are also reported by the plugin as age zero.'
           preprocessing:
             - type: JAVASCRIPT
               parameters:
                 - |
                   var age = JSON.parse(value).summary.oldest_vendor_age_seconds;
                   if (age === null) {
-                    return null;
+                    return 0;
                   }
                   if (typeof age !== 'number' || age < 0 || !isFinite(age)) {
                     throw 'Invalid oldest vendor age';
@@ -2873,7 +2889,7 @@ zabbix_export:
             - type: BOOL_TO_DECIMAL
               parameters: []
           master_item:
-            key: dnf.get
+            key: packages.get
           tags:
             - tag: component
               value: updates
@@ -2904,7 +2920,7 @@ zabbix_export:
               parameters:
                 - '0.001'
           master_item:
-            key: dnf.get
+            key: packages.get
           tags:
             - tag: component
               value: updates
@@ -2935,7 +2951,7 @@ zabbix_export:
             - type: BOOL_TO_DECIMAL
               parameters: []
           master_item:
-            key: dnf.get
+            key: packages.get
           tags:
             - tag: component
               value: updates
@@ -2950,7 +2966,7 @@ zabbix_export:
               parameters:
                 - $.summary.updates
           master_item:
-            key: dnf.get
+            key: packages.get
           tags:
             - tag: component
               value: updates
@@ -2965,7 +2981,7 @@ zabbix_export:
               parameters:
                 - $.summary.repositories
           master_item:
-            key: dnf.get
+            key: packages.get
           tags:
             - tag: component
               value: updates
@@ -2984,7 +3000,7 @@ zabbix_export:
             - type: BOOL_TO_DECIMAL
               parameters: []
           master_item:
-            key: dnf.get
+            key: packages.get
           tags:
             - tag: component
               value: updates
@@ -3003,7 +3019,7 @@ zabbix_export:
             - type: BOOL_TO_DECIMAL
               parameters: []
           master_item:
-            key: dnf.get
+            key: packages.get
           tags:
             - tag: component
               value: updates
@@ -3035,7 +3051,7 @@ zabbix_export:
                   }
                   return data.summary.update_types.security;
           master_item:
-            key: dnf.get
+            key: packages.get
           tags:
             - tag: component
               value: updates
@@ -3067,7 +3083,7 @@ zabbix_export:
                   }
                   return data.summary.update_types.bugfix;
           master_item:
-            key: dnf.get
+            key: packages.get
           tags:
             - tag: component
               value: updates
@@ -3087,7 +3103,7 @@ zabbix_export:
                   }
                   return data.summary.update_types.enhancement;
           master_item:
-            key: dnf.get
+            key: packages.get
           tags:
             - tag: component
               value: updates
@@ -3107,7 +3123,7 @@ zabbix_export:
                   }
                   return data.summary.update_types.other;
           master_item:
-            key: dnf.get
+            key: packages.get
           tags:
             - tag: component
               value: updates
@@ -3139,7 +3155,7 @@ zabbix_export:
 
                   return results[result];
           master_item:
-            key: dnf.get
+            key: packages.get
           tags:
             - tag: component
               value: updates
@@ -3162,14 +3178,14 @@ zabbix_export:
           value_type: UNSIGNED
           units: unixtime
           trends: '0'
-          description: 'Unix timestamp of the most recent completed DNF transaction that upgraded a package. No value is stored when no such transaction exists.'
+          description: 'Unix timestamp of the most recent completed DNF transaction that upgraded a package. The value is 0 when no such transaction exists.'
           preprocessing:
             - type: JAVASCRIPT
               parameters:
                 - |
                   var data = JSON.parse(value);
                   if (data.summary.last_update.timestamp === null) {
-                    return null;
+                    return 0;
                   }
 
                   var timestamp = Date.parse(data.summary.last_update.timestamp);
@@ -3179,7 +3195,7 @@ zabbix_export:
 
                   return Math.floor(timestamp / 1000);
           master_item:
-            key: dnf.get
+            key: packages.get
           tags:
             - tag: component
               value: updates
@@ -3207,7 +3223,7 @@ zabbix_export:
                   parameters:
                     - '$.repositories[?(@.id == "{#REPO_ID}")].update_count.first()'
               master_item:
-                key: dnf.get
+                key: packages.get
               tags:
                 - tag: component
                   value: updates
@@ -3251,7 +3267,7 @@ zabbix_export:
 
                       return packages.join(', ');
               master_item:
-                key: dnf.get
+                key: packages.get
               tags:
                 - tag: component
                   value: updates
@@ -3260,7 +3276,7 @@ zabbix_export:
                 - tag: repository_name
                   value: '{#REPO_NAME}'
           master_item:
-            key: dnf.get
+            key: packages.get
           preprocessing:
             - type: JSONPATH
               parameters:
@@ -3279,7 +3295,7 @@ zabbix_export:
           lifetime: 30d
           enabled_lifetime_type: DISABLE_AFTER
           enabled_lifetime: 1d
-          description: 'Discovers only advisory severities explicitly enabled by the LLD macros. Lost advisory items remain enabled for one day so the presence value can become zero and recover the trigger, then remain disabled until deletion after 30 days. Invalid macros or incomplete metadata make discovery unsupported rather than returning a false empty list.'
+          description: 'Discovers only advisory severities explicitly enabled by the LLD macros. With every severity disabled, incomplete optional advisory metadata safely produces an empty discovery set. Lost advisory items remain enabled for one day so the presence value can become zero and recover the trigger, then remain disabled until deletion after 30 days. Invalid macros or incomplete metadata for enabled discovery make the rule unsupported rather than returning a false empty list.'
           item_prototypes:
             - uuid: 68a4f86316854fb0be0cb45f043c321b
               name: 'DNF: Advisory [{#ADVISORY_ID}]: Presence'

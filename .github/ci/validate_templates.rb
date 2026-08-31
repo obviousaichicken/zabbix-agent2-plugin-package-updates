@@ -167,7 +167,7 @@ fail_contract("APT-owned UUIDs are not fresh: #{overlap.join(', ')}") unless ove
 
 dnf_templates = templates_by_family.fetch("DNF")
 expected_dnf_keys = %w[
-  dnf.get
+  packages.get
   dnf.advisories.get
   dnf.advisory.discovery.data
   dnf.collection.complete
@@ -418,12 +418,21 @@ dnf_templates.each do |template|
   age_js = items_by_key.fetch("dnf.advisory.oldest.age")
                    .fetch("preprocessing").first.dig("parameters", 0)
   unless timestamp_js.include?("oldest_vendor_timestamp") &&
-         timestamp_js.include?("Date.parse") && timestamp_js.include?("return null")
-    fail_contract("#{template_name} oldest timestamp preprocessing is not null-safe")
+         timestamp_js.include?("Date.parse") && timestamp_js.include?("return 0") &&
+         !timestamp_js.include?("return null")
+    fail_contract("#{template_name} oldest timestamp preprocessing has no recoverable unknown value")
   end
   unless age_js.include?("oldest_vendor_age_seconds") &&
-         age_js.include?("isFinite") && age_js.include?("return null")
-    fail_contract("#{template_name} oldest age preprocessing is not bounded and null-safe")
+         age_js.include?("isFinite") && age_js.include?("return 0") &&
+         !age_js.include?("return null")
+    fail_contract("#{template_name} oldest age preprocessing has no recoverable unknown value")
+  end
+
+  last_update_js = items_by_key.fetch("dnf.last_update.timestamp")
+                                .fetch("preprocessing").first.dig("parameters", 0)
+  unless last_update_js.include?("last_update.timestamp === null") &&
+         last_update_js.include?("return 0") && !last_update_js.include?("return null")
+    fail_contract("#{template_name} last-update timestamp has no recoverable unknown value")
   end
 
   triggers = items.flat_map { |item| item.fetch("triggers", []) }
@@ -503,10 +512,10 @@ dnf_templates.each do |template|
     fail_contract("#{template_name} Critical and Important triggers are not mutually exclusive")
   end
 
-  legacy_security = triggers_by_name.fetch("DNF: Security updates are available")
-  unless legacy_security.fetch("expression").include?("dnf.updates.security") &&
-         legacy_security.fetch("expression").include?("{$DNF.SECURITY.MIN}")
-    fail_contract("#{template_name} legacy security trigger changed")
+  security_updates = triggers_by_name.fetch("DNF: Security updates are available")
+  unless security_updates.fetch("expression").include?("dnf.updates.security") &&
+         security_updates.fetch("expression").include?("{$DNF.SECURITY.MIN}")
+    fail_contract("#{template_name} security trigger changed")
   end
 end
 
@@ -595,6 +604,15 @@ unless default_discovery["ok"] && default_discovery["records"] == []
   fail_contract("advisory discovery creates objects with default macros")
 end
 
+disabled_incomplete_metadata = JSON.parse(JSON.generate(complete_discovery_payload))
+disabled_incomplete_metadata["metadata"].transform_values! { false }
+disabled_incomplete_discovery = run_advisory_discovery(
+  advisory_discovery_javascript, disabled_incomplete_metadata, lld_macro_values
+)
+unless disabled_incomplete_discovery["ok"] && disabled_incomplete_discovery["records"] == []
+  fail_contract("disabled advisory discovery rejects unavailable optional metadata")
+end
+
 all_lld_macro_values = lld_macro_values.transform_values { "1" }
 all_discovery = run_advisory_discovery(
   advisory_discovery_javascript, complete_discovery_payload, all_lld_macro_values
@@ -662,6 +680,14 @@ end
 count_mismatch = JSON.parse(JSON.generate(complete_discovery_payload))
 count_mismatch["summary"]["advisories"] += 1
 incomplete_payloads << count_mismatch
+
+[collection_incomplete, count_mismatch].each_with_index do |payload, index|
+  result = run_advisory_discovery(
+    advisory_discovery_javascript, payload, lld_macro_values
+  )
+  fail_contract("disabled advisory discovery accepted invalid structure #{index}") if result["ok"]
+end
+
 incomplete_payloads.each_with_index do |payload, index|
   result = run_advisory_discovery(
     advisory_discovery_javascript, payload, all_lld_macro_values
@@ -759,11 +785,19 @@ expected_apt_macros = %w[
 ].sort.freeze
 
 apt_templates.each do |template|
-  keys = template.fetch("items").map { |item| item.fetch("key") }.sort
+  items_by_key = template.fetch("items").to_h { |item| [item.fetch("key"), item] }
+  keys = items_by_key.keys.sort
   fail_contract("#{template['template']} item set is not APT-safe") unless keys == expected_apt_keys
 
   macros = template.fetch("macros").map { |macro| macro.fetch("macro") }.sort
   fail_contract("#{template['template']} macro set is incomplete") unless macros == expected_apt_macros
+
+  %w[apt.last_update.timestamp apt.metadata.refreshed].each do |key|
+    numeric_js = items_by_key.fetch(key).fetch("preprocessing").first.dig("parameters", 0)
+    unless numeric_js.include?("return 0") && !numeric_js.include?("return null")
+      fail_contract("#{template['template']} #{key} has no recoverable unknown value")
+    end
+  end
 
   details = template.fetch("discovery_rules").flat_map do |rule|
     rule.fetch("item_prototypes", [])

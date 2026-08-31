@@ -41,6 +41,7 @@ PASSIVE_HOSTS = (
     ("zbx70-ubi10-agent", "UBI 10 / Package Updates", "zbx70_ubi10_agent"),
     ("zbx70-fedora43-agent", "Fedora 43 / Package Updates", "zbx70_fedora43_agent"),
     ("zbx70-fedora44-agent", "Fedora 44 / Package Updates", "zbx70_fedora44_agent"),
+    ("zbx70-rocky8-agent", "Rocky Linux 8.8 / Package Updates", "zbx70_rocky8_agent"),
     ("zbx70-rocky9-agent", "Rocky Linux 9 / Package Updates", "zbx70_rocky9_agent"),
     ("zbx70-rocky10-agent", "Rocky Linux 10 / Package Updates", "zbx70_rocky10_agent"),
     ("zbx70-alma9-agent", "AlmaLinux 9 / Package Updates", "zbx70_alma9_agent"),
@@ -281,12 +282,12 @@ def execute_master_items(api, host_ids):
         {
             "output": ["itemid"],
             "hostids": host_ids,
-            "filter": {"key_": ["dnf.get"]},
+            "filter": {"key_": ["packages.get"]},
         },
     )
     if len(items) != len(host_ids):
         raise RuntimeError(
-            f"found {len(items)} dnf.get items for {len(host_ids)} hosts",
+            f"found {len(items)} packages.get items for {len(host_ids)} hosts",
         )
 
     api.call(

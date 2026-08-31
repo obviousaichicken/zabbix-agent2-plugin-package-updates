@@ -90,7 +90,7 @@ func TestRunRejectsTestArguments(t *testing.T) {
 func TestCollectAndWrite(t *testing.T) {
 	t.Parallel()
 
-	want := results.Payload{
+	want := results.PackagePayload{
 		Collection: results.Collection{Complete: true, DurationMS: -1},
 		Summary:    results.Summary{Repositories: 2},
 	}
@@ -99,7 +99,7 @@ func TestCollectAndWrite(t *testing.T) {
 	err := collectAndWrite(
 		t.Context(),
 		&output,
-		func(ctx context.Context) (results.Payload, error) {
+		func(ctx context.Context) (results.PackagePayload, error) {
 			deadline, ok := ctx.Deadline()
 			if !ok {
 				t.Fatal("collection context has no deadline")
@@ -120,7 +120,7 @@ func TestCollectAndWrite(t *testing.T) {
 		t.Fatalf("collectAndWrite() output is not indented JSON: %q", output.String())
 	}
 
-	var got results.Payload
+	var got results.PackagePayload
 	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
 		t.Fatalf("decode output: %v", err)
 	}
@@ -141,8 +141,8 @@ func TestCollectAndWriteReturnsCollectionError(t *testing.T) {
 	err := collectAndWrite(
 		t.Context(),
 		&output,
-		func(context.Context) (results.Payload, error) {
-			return results.Payload{}, wantErr
+		func(context.Context) (results.PackagePayload, error) {
+			return results.PackagePayload{}, wantErr
 		},
 	)
 	if !errors.Is(err, wantErr) {
@@ -160,8 +160,8 @@ func TestCollectAndWriteReturnsWriterError(t *testing.T) {
 	err := collectAndWrite(
 		t.Context(),
 		errorWriter{err: wantErr},
-		func(context.Context) (results.Payload, error) {
-			return results.Payload{}, nil
+		func(context.Context) (results.PackagePayload, error) {
+			return results.PackagePayload{}, nil
 		},
 	)
 	if !errors.Is(err, wantErr) {
@@ -178,10 +178,10 @@ func TestCollectAndWritePropagatesParentCancellation(t *testing.T) {
 	err := collectAndWrite(
 		parent,
 		io.Discard,
-		func(ctx context.Context) (results.Payload, error) {
+		func(ctx context.Context) (results.PackagePayload, error) {
 			<-ctx.Done()
 
-			return results.Payload{}, ctx.Err()
+			return results.PackagePayload{}, ctx.Err()
 		},
 	)
 	if !errors.Is(err, context.Canceled) {

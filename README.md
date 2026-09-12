@@ -11,7 +11,7 @@ It reports:
 * Pending updates, grouped by repository and update type
 * Security advisories and CVEs on DNF hosts
 * Reboot status and the result of the last package transaction
-* The age of local package metadata on APT hosts
+* How long ago APT last refreshed its package indexes
 
 It supports:
 
@@ -21,10 +21,16 @@ It supports:
 * AlmaLinux 8, 9, and 10
 * Oracle Linux 8, 9, and 10
 * CentOS Stream 9 and 10
-* Debian 12 and 13
-* Ubuntu 22.04, 24.04, and 26.04
+* Debian 11, 12, and 13
+* Ubuntu 22.04, 24.04, 25.04, 25.10, and 26.04
+* Linux Mint 21 and 22
+* Pop!_OS 22.04 and 24.04
 
-Additionally the plugin works with all `zabbix-agent2` versions in the 7.0, 7.2, and 7.4 branches.
+Debian 11 is oldoldstable, and Ubuntu 25.04 and 25.10 are past their end of standard support. They are accepted and tested, but a host still on them no longer receives the updates this plugin is there to report.
+
+Other Debian and RHEL derivatives are detected from `ID_LIKE` and work without being listed here. See [Derivatives](#derivatives).
+
+Additionally the plugin works with all `zabbix-agent2` versions in the 7.0, 7.2, and 7.4 branches. Releases are `linux/amd64` binaries and the installer refuses any other architecture; other architectures need a source build.
 
 <a href="docs/images/dnf-advisory-values-rocky8.png"><img width="100%" alt="DNF advisory collection values for a Rocky Linux 8 host in Zabbix" src="docs/images/dnf-advisory-values-rocky8.png"></a>
 
@@ -59,7 +65,7 @@ Additionally the plugin works with all `zabbix-agent2` versions in the 7.0, 7.2,
 curl -fLO https://github.com/obviousaichicken/zabbix-agent2-plugin-package-updates/releases/latest/download/install.sh && sudo sh install.sh
 ```
 
-The installer detects DNF or APT, verifies the downloaded binary, checks package-manager access as the `zabbix` user, validates the Agent 2 configuration, and restarts the service. On APT systems, package indexes must already exist; the installer does not run `apt-get update`.
+The installer detects DNF or APT, verifies the downloaded binary, checks package-manager access as the `zabbix` user, validates the Agent 2 configuration, and restarts the service. It requires systemd and Linux on x86_64. On APT systems, package indexes must already exist; the installer does not run `apt-get update`.
 
 ### 2. Import the template
 
@@ -108,15 +114,18 @@ sudo chmod 0644 /etc/zabbix/zabbix_agent2.d/plugins.d/package-updates.conf
 # On systems with SELinux, apply the default installation-path contexts
 sudo restorecon -Rv /usr/sbin/zabbix-agent2-plugin /etc/zabbix/zabbix_agent2.d/plugins.d/package-updates.conf
 
-# Confirm that the zabbix user can query DNF on a DNF host
+# Confirm that the zabbix user can query DNF on a DNF host. The --setopt
+# override is what the collector runs, so an unreachable repository fails
+# here rather than at collection time.
 sudo -u zabbix dnf -q repolist
-sudo -u zabbix dnf -q repoquery --upgrades
+sudo -u zabbix dnf -q '--setopt=*.skip_if_unavailable=False' repoquery --upgrades --latest-limit=1
 
 # Or confirm read-only APT access on a Debian/Ubuntu host. Populate indexes as
 # root first if this host has never run apt-get update.
 sudo -u zabbix apt-get indextargets
 sudo -u zabbix dpkg-query --show
-sudo -u zabbix apt-cache policy dpkg:$(dpkg --print-architecture)
+sudo -u zabbix dpkg --print-architecture
+sudo -u zabbix apt-cache policy "dpkg:$(dpkg --print-architecture)"
 
 # Restart the agent and check that it started correctly
 sudo systemctl restart zabbix-agent2
@@ -129,7 +138,9 @@ Backend detection is automatic. Most installations do not need anything beyond t
 
 ### Backend selection
 
-The backend defaults to `auto`. The plugin reads `/etc/os-release`: it matches `ID` first and falls back to `ID_LIKE`, so Debian and Ubuntu derivatives are detected as APT and RHEL derivatives as DNF. Startup fails if the distribution is unsupported, if `ID_LIKE` names both families, or if the required commands are missing. The installer applies the same rule, and additionally checks the version against the support list above for the distributions named there.
+The backend defaults to `auto`. The plugin reads `/etc/os-release`: it matches `ID` first and falls back to `ID_LIKE`, so Debian and Ubuntu derivatives are detected as APT and RHEL derivatives as DNF. Startup fails if the distribution is unsupported, if `ID_LIKE` names both families, or if the required commands are missing. The plugin itself does not check the release version at all.
+
+The installer applies the same backend rule and additionally checks `VERSION_ID`, but only where this project has something to check against: an exact list for Debian, Ubuntu, Linux Mint and Pop!_OS, and a floor of major version 8 for Fedora, RHEL, CentOS Stream, Rocky Linux, AlmaLinux and Oracle Linux. A Fedora older than the two listed above therefore passes the installer even though it is not tested. Anything else reached through `ID_LIKE` numbers its releases on its own schedule, so the installer prints a note saying the version was not checked and continues.
 
 Changing `Plugins.PackageUpdates.Backend` takes effect on an agent configuration reload; a full restart is not required.
 
@@ -142,6 +153,15 @@ Plugins.PackageUpdates.Backend=apt
 ```
 
 Valid values are `auto`, `dnf`, and `apt`. A forced backend skips distribution-family detection but still checks the required commands. Leave this setting out for normal installations.
+
+### Derivatives
+
+Because detection falls back to `ID_LIKE`, distributions this project has never tested still work. On the APT side that covers Linux Mint, LMDE, Pop!_OS, Zorin OS, elementary OS, Kali, Devuan and Raspberry Pi OS; on the DNF side Amazon Linux 2023, Nobara, EuroLinux and the other RHEL rebuilds. Anything whose `ID_LIKE` names neither family, such as openSUSE or Arch, is refused at startup rather than guessed at.
+
+Two things are worth knowing before relying on any of them:
+
+* Linux Mint is the only one in the test matrix. Every other derivative, Pop!_OS included, is covered by the detection and version rules alone, not by an end-to-end run on that distribution.
+* Security classification recognizes the official Debian and Ubuntu security pockets only. A derivative that serves its own security updates from its own repository, such as Devuan, Kali or Raspberry Pi OS, reports those updates as `other`, so a security count of zero on such a host means "none recognized", not "none pending". Mint, Pop!_OS, Zorin and elementary keep the Ubuntu pockets for the base system, so those are still classified correctly.
 
 ### Reboot detection
 
@@ -157,9 +177,11 @@ The payload reports when APT last refreshed this host's indexes as `metadata.ref
 
 It is deliberately **not** derived from index file modification times. APT stores each index with the `Last-Modified` time the mirror sent, so an index mtime is when the archive published that index, not when this host fetched it. Immutable release pockets such as `trixie/main` or `noble/main` are published once and keep their release-day timestamp forever, which would report years of staleness on a host that refreshes every hour.
 
+If neither path exists, the check fails and says to run `apt-get update`: a container image built with `/var/lib/apt/lists` emptied leaves no evidence that this host has ever refreshed, and reporting an age would be inventing one.
+
 Missing or unreadable indexes still fail the check, and old but readable indexes remain valid so the template can warn about stale metadata. Schedule `apt-get update` separately.
 
-Only recognized official security pockets are counted as security updates; all other candidates are classified as `other`. Bugfix and enhancement classifications are unsupported. Update history is best effort and comes from retained `/var/log/apt/history.log*` files. Reboot detection uses `/run/reboot-required`.
+Only recognized official Debian and Ubuntu security pockets are counted as security updates; all other candidates are classified as `other`. Bugfix and enhancement classifications are unsupported. Update history is best effort and comes from retained `/var/log/apt/history.log*` files.
 
 ## Troubleshooting
 
@@ -195,7 +217,7 @@ The package and advisory item keys are `packages.get` and `advisories.get`.
 * DNF5 supports the 5.2 and 5.3-or-newer JSON formats. Malformed or unknown formats fail the check instead of falling back to text parsing.
 * Results are based on enabled repository metadata. They do not say whether a vulnerability is exploitable or reachable.
 * Check the completeness items before treating a zero CVE count or a missing date as final.
-* Advisory checks run hourly by default and are limited to 8 MiB.
+* Advisory checks run hourly by default. A response over 8 MiB fails rather than being truncated, which is a limit on every item this plugin answers, not only advisories.
 * Per-advisory discovery adds five items and one trigger for every selected advisory. IDs longer than 256 UTF-16 code units are not supported by discovery.
 
 ### APT

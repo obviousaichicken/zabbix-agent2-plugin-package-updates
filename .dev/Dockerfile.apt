@@ -15,7 +15,14 @@ RUN CGO_ENABLED=0 go build -o /out/zabbix-agent2-plugin-package-updates ./cmd/ag
 FROM ${BASE_IMAGE}
 
 ARG AGENT_CONFIG=.dev/zabbix_agent2.conf
-ARG ZABBIX_RELEASE_URL
+
+# Zabbix publishes a repository only for the distributions it builds for.
+# Derivatives such as Linux Mint and interim Ubuntu releases are not among
+# them, so their images leave ZABBIX_RELEASE_URL empty and take zabbix-agent2
+# from the distribution's own archive, which is what an operator on such a
+# host does. Testing that path matters: it is a different build of the agent
+# from a different packager, loading the same plugin.
+ARG ZABBIX_RELEASE_URL=
 
 RUN set -eux; \
     apt-get update; \
@@ -25,11 +32,20 @@ RUN set -eux; \
         curl \
         passwd \
         util-linux; \
-    curl -fsSL -o /tmp/zabbix-release.deb "$ZABBIX_RELEASE_URL"; \
-    dpkg -i /tmp/zabbix-release.deb; \
-    rm /tmp/zabbix-release.deb; \
-    apt-get update; \
+    if [ -n "$ZABBIX_RELEASE_URL" ]; then \
+        curl -fsSL -o /tmp/zabbix-release.deb "$ZABBIX_RELEASE_URL"; \
+        dpkg -i /tmp/zabbix-release.deb; \
+        rm /tmp/zabbix-release.deb; \
+        apt-get update; \
+    fi; \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends zabbix-agent2; \
+    if ! getent group zabbix >/dev/null 2>&1; then \
+        groupadd --system zabbix; \
+    fi; \
+    if ! id zabbix >/dev/null 2>&1; then \
+        useradd --system --gid zabbix --home-dir /var/lib/zabbix \
+            --no-create-home --shell /usr/sbin/nologin zabbix; \
+    fi; \
     apt-get clean
 
 ENV HOME=/var/lib/zabbix

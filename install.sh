@@ -90,6 +90,72 @@ detect_package_backend() {
 	fail "unsupported operating-system package manager for ID=\"$backend_id\" ID_LIKE=\"$backend_id_like\""
 }
 
+# supported_version_check reports whether VERSION_ID is a release this
+# project documents and tests:
+#
+#   0  supported
+#   1  unsupported; the requirement is printed on stdout
+#   2  the distribution is not version gated here
+#
+# A derivative reached through ID_LIKE numbers its releases on its own
+# schedule, which cannot be checked against a list of the distributions the
+# README names, so it returns 2 rather than pretending the version was
+# validated.
+supported_version_check() {
+	check_id=$1
+	check_version=$2
+	check_major="${check_version%%.*}"
+
+	case "$check_id" in
+	debian)
+		case "$check_version" in
+		11 | 12 | 13) return 0 ;;
+		esac
+		printf 'Debian 11, 12, or 13\n'
+		;;
+	ubuntu)
+		case "$check_version" in
+		22.04 | 24.04 | 25.04 | 25.10 | 26.04) return 0 ;;
+		esac
+		printf 'Ubuntu 22.04, 24.04, 25.04, 25.10, or 26.04\n'
+		;;
+	pop)
+		# Pop!_OS carries Ubuntu's VERSION_ID unchanged and System76 builds
+		# only on LTS bases, so the list is Ubuntu's LTS releases. Add a
+		# newer one here when System76 ships it, not in anticipation.
+		case "$check_version" in
+		22.04 | 24.04) return 0 ;;
+		esac
+		printf 'Pop!_OS 22.04 or 24.04\n'
+		;;
+	linuxmint)
+		# Mint numbers its releases independently of the Ubuntu base it is
+		# built from: 21.x is Ubuntu 22.04 and 22.x is Ubuntu 24.04. Point
+		# releases keep the base, so only the major is checked.
+		case "$check_major" in
+		21 | 22) return 0 ;;
+		esac
+		printf 'Linux Mint 21 or 22\n'
+		;;
+	fedora | rhel | centos | rocky | almalinux | ol)
+		case "$check_major" in
+		'' | *[!0-9]*) ;;
+		*)
+			if [ "$check_major" -ge 8 ]; then
+				return 0
+			fi
+			;;
+		esac
+		printf 'a DNF-based version 8 or newer\n'
+		;;
+	*)
+		return 2
+		;;
+	esac
+
+	return 1
+}
+
 check_operating_system() {
 	[ -r /etc/os-release ] || fail "cannot read /etc/os-release"
 
@@ -101,34 +167,14 @@ check_operating_system() {
 
 	package_backend="$(detect_package_backend "$os_id" "$os_id_like")"
 
-	# Version support is only defined for the distributions named in the
-	# README. A derivative detected through ID_LIKE uses its own versioning,
-	# which cannot be checked against that list, so report that plainly
-	# instead of pretending the version was validated.
-	case "$os_id" in
-	debian)
-		case "$os_version" in
-		12 | 13) return ;;
-		*) fail "unsupported Debian version ${os_version:-unknown}; require Debian 12 or 13" ;;
-		esac
-		;;
-	ubuntu)
-		case "$os_version" in
-		22.04 | 24.04 | 26.04) return ;;
-		*) fail "unsupported Ubuntu version ${os_version:-unknown}; require Ubuntu 22.04, 24.04, or 26.04" ;;
-		esac
-		;;
-	fedora | rhel | centos | rocky | almalinux | ol)
-		os_major="${os_version%%.*}"
-		case "$os_major" in
-		'' | *[!0-9]*)
-			fail "cannot parse operating system version: ${os_version:-unknown}"
-			;;
-		esac
-		if [ "$os_major" -lt 8 ]; then
-			fail "unsupported operating system version $os_version; require a DNF-based version 8 or newer"
-		fi
-		return
+	version_status=0
+	version_requirement="$(supported_version_check "$os_id" "$os_version")" ||
+		version_status=$?
+
+	case "$version_status" in
+	0) return ;;
+	1)
+		fail "unsupported ${os_id} version ${os_version:-unknown}; require ${version_requirement}"
 		;;
 	esac
 

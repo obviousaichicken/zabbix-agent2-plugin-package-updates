@@ -94,7 +94,13 @@ func ParsePackagePolicies(
 	if err != nil {
 		return nil, err
 	}
-	if len(blocks) != len(requestedByKey) {
+	// Fewer blocks than requests is drift, not corruption: a package purged
+	// between enumeration and this query stops being known to apt, which
+	// then prints no block for it. More blocks than requests means apt
+	// answered something that was never asked, which is a real protocol
+	// violation. Every block is still checked against the request set by
+	// resolvePolicyPackage, so a short answer cannot smuggle in a stranger.
+	if len(blocks) > len(requestedByKey) {
 		return nil, fmt.Errorf(
 			"apt-cache policy returned %d package blocks for %d requests",
 			len(blocks),

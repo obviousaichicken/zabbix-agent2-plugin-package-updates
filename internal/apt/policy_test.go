@@ -365,7 +365,6 @@ func TestParsePackagePoliciesRejectsSemanticMismatches(t *testing.T) {
 	}{
 		{name: "candidate absent from table", data: strings.Replace(base, "Candidate: 2.0-1", "Candidate: 3.0-1", 1), want: "no exact version-table entry"},
 		{name: "installed marker mismatch", data: strings.Replace(base, "*** 1.0-1", "*** 2.0-1", 1), want: "duplicate version-table version"},
-		{name: "missing returned block", data: "", want: "returned 0 package blocks"},
 		{name: "extra returned block", data: base + base, want: "returned 2 package blocks"},
 	}
 
@@ -385,6 +384,36 @@ func TestParsePackagePoliciesRejectsSemanticMismatches(t *testing.T) {
 // apt prints the native architecture's package header unqualified and only
 // qualifies foreign architectures, so a multi-arch host emits exactly this
 // shape. Resolving it by name uniqueness used to fail the whole collection.
+// A package purged between enumeration and the policy query stops being known
+// to apt, which then prints no block for it. That is drift, not corruption, so
+// the remaining blocks must still parse.
+func TestParsePackagePoliciesToleratesMissingBlocks(t *testing.T) {
+	t.Parallel()
+
+	indexes := mustPolicyIndexes(t, aptTargetRecord(targetRecordOptions{}))
+	requested := []InstalledPackage{
+		{Name: "kept-pkg", Architecture: "amd64", Version: mustDebianVersion(t, "1.0-1")},
+		{Name: "purged-pkg", Architecture: "amd64", Version: mustDebianVersion(t, "1.0-1")},
+	}
+	data := []byte(`kept-pkg:
+  Installed: 1.0-1
+  Candidate: 2.0-1
+  Version table:
+     2.0-1 500
+        500 https://packages.example/debian trixie/main amd64 Packages
+ *** 1.0-1 100
+        100 /var/lib/dpkg/status
+`)
+
+	policies, err := ParsePackagePolicies(data, amd64Request(requested), indexes)
+	if err != nil {
+		t.Fatalf("ParsePackagePolicies() error = %v, want a tolerated missing block", err)
+	}
+	if len(policies) != 1 || policies[0].Name != "kept-pkg" {
+		t.Fatalf("policies = %#v, want only the surviving package", policies)
+	}
+}
+
 func TestParsePackagePoliciesResolvesNativeUnqualifiedMultiarchHeaders(t *testing.T) {
 	t.Parallel()
 

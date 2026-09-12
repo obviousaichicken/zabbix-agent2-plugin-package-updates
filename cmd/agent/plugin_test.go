@@ -709,7 +709,7 @@ func pluginAPTSnapshot() packageinfo.Snapshot {
 				Other:       packageinfo.CapabilitySupported,
 			},
 			RepositoryAttribution: packageinfo.CapabilitySupported,
-			RebootDetection:       packageinfo.CapabilitySupported,
+			RebootDetection:       packageinfo.CapabilityBestEffort,
 			LastUpdate:            packageinfo.CapabilityBestEffort,
 			MetadataAge:           packageinfo.CapabilitySupported,
 		},

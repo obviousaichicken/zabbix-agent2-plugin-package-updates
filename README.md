@@ -143,7 +143,9 @@ Valid values are `auto`, `dnf`, and `apt`. A forced backend skips distribution-f
 
 ### Reboot detection
 
-DNF reboot status is determined from reboot-sensitive RPM install times and installed kernel packages compared with the running kernel. The plugin supports DNF4 and DNF5 without depending on an optional DNF reboot-detection plugin. APT reboot status follows `/run/reboot-required`.
+DNF reboot status is determined from reboot-sensitive RPM install times and installed kernel packages compared with the running kernel. The plugin supports DNF4 and DNF5 without depending on an optional DNF reboot-detection plugin.
+
+APT reboot status combines two signals. `/run/reboot-required` is authoritative when present and is the only signal that covers library-only reboots such as libc, systemd or dbus, but it is written by `update-notifier-common` and by `unattended-upgrades`' kernel hook, which are optional packages absent from minimal Debian installs and from most container and cloud images. The plugin therefore also compares the running kernel against the installed `linux-image-*` packages of the same flavour, which needs nothing beyond dpkg and works on every host. Library-only reboots still go undetected where the marker file has no writer, so APT reports reboot detection as `best_effort` rather than `supported`.
 
 ### APT metadata
 
@@ -196,6 +198,8 @@ The package and advisory item keys are `packages.get` and `advisories.get`.
 * `metadata.age_seconds` measures the last refresh run, not whether every repository was reachable during it. `apt-get update` exits successfully when some indexes fail and older copies are reused.
 * Bugfix and enhancement classifications are unavailable.
 * Package history is best effort because old APT logs may have been rotated away.
+* Reboot detection is best effort. A newer installed kernel is always detected; a library-only reboot is detected only where `/run/reboot-required` has a writer installed.
+* Collection is a point-in-time snapshot. A package installed, upgraded or removed while a check runs is reported as APT saw it, or omitted, and appears in the next collection.
 * APT does not provide the per-advisory monitoring available on DNF.
 
 ## AI Disclaimer

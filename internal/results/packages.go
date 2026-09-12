@@ -190,9 +190,8 @@ func validatePackageSnapshot(snapshot packageinfo.Snapshot) error {
 
 func validateBackendCapabilities(snapshot packageinfo.Snapshot) error {
 	capabilities := snapshot.Capabilities
-	if capabilities.RepositoryAttribution != packageinfo.CapabilitySupported ||
-		capabilities.RebootDetection != packageinfo.CapabilitySupported {
-		return errors.New("repository attribution and reboot detection must be supported")
+	if capabilities.RepositoryAttribution != packageinfo.CapabilitySupported {
+		return errors.New("repository attribution must be supported")
 	}
 
 	switch snapshot.Backend {
@@ -201,15 +200,20 @@ func validateBackendCapabilities(snapshot packageinfo.Snapshot) error {
 			capabilities.Classification.Bugfix != packageinfo.CapabilitySupported ||
 			capabilities.Classification.Enhancement != packageinfo.CapabilitySupported ||
 			capabilities.Classification.Other != packageinfo.CapabilitySupported ||
+			capabilities.RebootDetection != packageinfo.CapabilitySupported ||
 			capabilities.LastUpdate != packageinfo.CapabilitySupported ||
 			capabilities.MetadataAge != packageinfo.CapabilityUnsupported {
 			return errors.New("invalid DNF capability combination")
 		}
 	case packageinfo.BackendAPT:
+		// APT reboot detection is best effort: a newer installed kernel is
+		// always visible, but library-only reboots need
+		// /run/reboot-required, which only optional packages write.
 		if capabilities.Classification.Security != packageinfo.CapabilitySupported ||
 			capabilities.Classification.Bugfix != packageinfo.CapabilityUnsupported ||
 			capabilities.Classification.Enhancement != packageinfo.CapabilityUnsupported ||
 			capabilities.Classification.Other != packageinfo.CapabilitySupported ||
+			capabilities.RebootDetection != packageinfo.CapabilityBestEffort ||
 			capabilities.LastUpdate != packageinfo.CapabilityBestEffort ||
 			capabilities.MetadataAge != packageinfo.CapabilitySupported {
 			return errors.New("invalid APT capability combination")

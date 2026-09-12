@@ -38,6 +38,10 @@ type PackageData struct {
 	Repositories []packageinfo.Repository
 	Updates      []packageinfo.Update
 	Metadata     packageinfo.Metadata
+
+	// Installed is the package set enumerated for this collection. Reboot
+	// detection reuses it instead of running dpkg-query a second time.
+	Installed []InstalledPackage
 }
 
 // Client runs bounded, read-only APT package collection.
@@ -45,6 +49,7 @@ type Client struct {
 	runner         Runner
 	paths          CommandPaths
 	stat           func(string) (fs.FileInfo, error)
+	readFile       func(string) ([]byte, error)
 	now            func() time.Time
 	rebootMarker   string
 	refreshSignals []string
@@ -84,7 +89,7 @@ func New(runner Runner) (*Client, error) {
 
 // NewAtPaths constructs an APT client from already-resolved executables.
 func NewAtPaths(runner Runner, paths CommandPaths) (*Client, error) {
-	return newClient(runner, paths, os.Stat, time.Now)
+	return newClient(runner, paths, os.Stat, os.ReadFile, time.Now)
 }
 
 func newClientForTest(
@@ -93,13 +98,14 @@ func newClientForTest(
 	stat func(string) (fs.FileInfo, error),
 	now func() time.Time,
 ) (*Client, error) {
-	return newClient(runner, paths, stat, now)
+	return newClient(runner, paths, stat, os.ReadFile, now)
 }
 
 func newClient(
 	runner Runner,
 	paths CommandPaths,
 	stat func(string) (fs.FileInfo, error),
+	readFile func(string) ([]byte, error),
 	now func() time.Time,
 ) (*Client, error) {
 	if runner == nil {
@@ -121,6 +127,9 @@ func newClient(
 	if stat == nil {
 		return nil, errors.New("filesystem stat function is required")
 	}
+	if readFile == nil {
+		return nil, errors.New("filesystem read function is required")
+	}
 	if now == nil {
 		return nil, errors.New("clock function is required")
 	}
@@ -134,6 +143,7 @@ func newClient(
 		runner:         runner,
 		paths:          paths,
 		stat:           stat,
+		readFile:       readFile,
 		now:            now,
 		rebootMarker:   defaultRebootMarker,
 		refreshSignals: defaultRefreshSignals(),
@@ -147,6 +157,7 @@ type testSystem struct {
 	runner            Runner
 	paths             CommandPaths
 	stat              func(string) (fs.FileInfo, error)
+	readFile          func(string) ([]byte, error)
 	now               func() time.Time
 	historyFileSystem historyFileSystem
 	historyDirectory  string
@@ -156,7 +167,11 @@ type testSystem struct {
 }
 
 func newClientWithSystemForTest(system testSystem) (*Client, error) {
-	client, err := newClient(system.runner, system.paths, system.stat, system.now)
+	readFile := system.readFile
+	if readFile == nil {
+		readFile = func(string) ([]byte, error) { return []byte("6.1.0-28-amd64\n"), nil }
+	}
+	client, err := newClient(system.runner, system.paths, system.stat, readFile, system.now)
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +202,7 @@ func (client *Client) Collect(ctx context.Context) (packageinfo.Snapshot, error)
 	if err != nil {
 		return packageinfo.Snapshot{}, fmt.Errorf("collect APT packages: %w", err)
 	}
-	rebootPending, err := client.RebootPending(ctx)
+	rebootPending, err := client.RebootPending(ctx, data.Installed)
 	if err != nil {
 		return packageinfo.Snapshot{}, fmt.Errorf("collect APT reboot status: %w", err)
 	}
@@ -206,9 +221,11 @@ func (client *Client) Collect(ctx context.Context) (packageinfo.Snapshot, error)
 				Other:       packageinfo.CapabilitySupported,
 			},
 			RepositoryAttribution: packageinfo.CapabilitySupported,
-			RebootDetection:       packageinfo.CapabilitySupported,
-			LastUpdate:            packageinfo.CapabilityBestEffort,
-			MetadataAge:           packageinfo.CapabilitySupported,
+			// Library-only reboots are invisible without
+			// /run/reboot-required, whose writers are optional packages.
+			RebootDetection: packageinfo.CapabilityBestEffort,
+			LastUpdate:      packageinfo.CapabilityBestEffort,
+			MetadataAge:     packageinfo.CapabilitySupported,
 		},
 		Metadata:      data.Metadata,
 		Repositories:  data.Repositories,
@@ -268,7 +285,7 @@ func (client *Client) Packages(ctx context.Context) (PackageData, error) {
 	if err != nil {
 		return PackageData{}, err
 	}
-	updates, err := client.pendingUpdates(ctx, installed, policies)
+	updates, err := client.pendingUpdates(ctx, policies)
 	if err != nil {
 		return PackageData{}, err
 	}
@@ -277,6 +294,7 @@ func (client *Client) Packages(ctx context.Context) (PackageData, error) {
 		Repositories: indexes.Repositories,
 		Updates:      updates,
 		Metadata:     metadata,
+		Installed:    installed,
 	}, nil
 }
 
@@ -359,39 +377,43 @@ func (client *Client) packagePolicies(
 	return policies, nil
 }
 
+// pendingUpdates derives updates from apt-cache policy alone.
+//
+// dpkg's database is live, so the installed set enumerated by dpkg-query and
+// the policies queried a moment later are two reads of moving state. Comparing
+// them and failing on any difference turned a routine unattended-upgrades run
+// into a failed check, because collection overlapping a package transaction is
+// normal rather than exceptional.
+//
+// Both versions therefore come from the same apt-cache policy block: apt reads
+// /var/lib/dpkg/status itself, so its Installed and Candidate lines are a
+// coherent pair by construction and need no cross-check. dpkg-query is reduced
+// to choosing which packages to ask about, which makes a package changing
+// mid-collection an ordinary snapshot boundary: it is reported as it was seen,
+// or omitted, and the next collection picks it up.
 func (client *Client) pendingUpdates(
 	ctx context.Context,
-	installed []InstalledPackage,
 	policies []PackagePolicy,
 ) ([]packageinfo.Update, error) {
-	installedByKey := make(map[string]InstalledPackage, len(installed))
-	for _, pkg := range installed {
-		installedByKey[packageKey(pkg.Name, pkg.Architecture)] = pkg
-	}
-	if len(policies) != len(installedByKey) {
-		return nil, errors.New("APT policy count does not match installed-package count")
-	}
-
 	updates := make([]packageinfo.Update, 0)
 	seen := make(map[string]struct{}, len(policies))
 	for _, policy := range policies {
 		key := packageKey(policy.Name, policy.Architecture)
-		pkg, exists := installedByKey[key]
-		if !exists {
-			return nil, errors.New("APT policy references an unknown installed package")
-		}
 		if _, duplicate := seen[key]; duplicate {
 			return nil, errors.New("APT policy contains a duplicate package")
 		}
 		seen[key] = struct{}{}
-		if policy.Installed == nil || policy.Installed.Full != pkg.Version.Full {
-			return nil, fmt.Errorf("package state changed while collecting %s:%s", pkg.Name, pkg.Architecture)
+
+		// Removed between enumeration and the policy query. A package that
+		// is not installed has no pending update.
+		if policy.Installed == nil {
+			continue
 		}
-		if policy.Candidate == nil || policy.Candidate.Full == pkg.Version.Full {
+		if policy.Candidate == nil || policy.Candidate.Full == policy.Installed.Full {
 			continue
 		}
 
-		newer, err := client.candidateIsNewer(ctx, pkg, *policy.Candidate)
+		newer, err := client.candidateIsNewer(ctx, policy, *policy.Candidate)
 		if err != nil {
 			return nil, err
 		}
@@ -400,7 +422,12 @@ func (client *Client) pendingUpdates(
 		}
 		source, err := preferredCandidateSource(policy.CandidateSources)
 		if err != nil {
-			return nil, fmt.Errorf("select candidate source for %s:%s: %w", pkg.Name, pkg.Architecture, err)
+			return nil, fmt.Errorf(
+				"select candidate source for %s:%s: %w",
+				policy.Name,
+				policy.Architecture,
+				err,
+			)
 		}
 
 		updateType := packageinfo.UpdateTypeOther
@@ -408,11 +435,11 @@ func (client *Client) pendingUpdates(
 			updateType = packageinfo.UpdateTypeSecurity
 		}
 		update := packageinfo.Update{
-			Name:         pkg.Name,
+			Name:         policy.Name,
 			Epoch:        policy.Candidate.Epoch,
 			Version:      policy.Candidate.Version,
 			Release:      policy.Candidate.Release,
-			Arch:         pkg.Architecture,
+			Arch:         policy.Architecture,
 			RepositoryID: source.RepositoryID,
 			Type:         updateType,
 		}
@@ -436,18 +463,23 @@ func (client *Client) pendingUpdates(
 
 func (client *Client) candidateIsNewer(
 	ctx context.Context,
-	pkg InstalledPackage,
+	policy PackagePolicy,
 	candidate DebianVersion,
 ) (bool, error) {
 	result, err := client.run(
 		ctx,
 		"dpkg compare package versions",
 		client.paths.DPKG,
-		[]string{"--compare-versions", candidate.Full, "gt", pkg.Version.Full},
+		[]string{"--compare-versions", candidate.Full, "gt", policy.Installed.Full},
 		[]int{1},
 	)
 	if err != nil {
-		return false, fmt.Errorf("compare package versions for %s:%s: %w", pkg.Name, pkg.Architecture, err)
+		return false, fmt.Errorf(
+			"compare package versions for %s:%s: %w",
+			policy.Name,
+			policy.Architecture,
+			err,
+		)
 	}
 	switch result.ExitCode {
 	case 0:

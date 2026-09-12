@@ -194,14 +194,26 @@ func TestClientPackagesUsesHighestSourcePriority(t *testing.T) {
 	}
 }
 
-func TestClientPackagesDetectsPackageStateRace(t *testing.T) {
+// dpkg's database is live, so the installed set and the policy query are two
+// reads of moving state. An upgrade committed between them used to fail the
+// whole check; the installed version now comes from the policy block itself,
+// so the collection simply reflects what apt saw.
+func TestClientPackagesToleratesPackageUpgradedMidCollection(t *testing.T) {
 	t.Parallel()
 
-	policy := strings.ReplaceAll(
-		string(readAPTFixture(t, "debian13", "policy.txt")),
-		"3.5.6-1~deb13u2",
-		"3.5.6-1~deb13u1",
-	)
+	// dpkg-query saw 3.5.6-1~deb13u2 installed; by the time apt-cache ran,
+	// the package had already been upgraded, so the installed marker and the
+	// dpkg status source have moved to the 3.5.7 row.
+	policy := `libssl3t64:
+  Installed: 3.5.7-1~deb13u2
+  Candidate: 3.5.7-1~deb13u2
+  Version table:
+ *** 3.5.7-1~deb13u2 500
+        500 http://deb.debian.org/debian-security trixie-security/main amd64 Packages
+        100 /var/lib/dpkg/status
+     3.5.6-1~deb13u2 500
+        500 http://deb.debian.org/debian trixie/main amd64 Packages
+`
 	now := time.Date(2026, time.August, 31, 12, 0, 0, 0, time.UTC)
 	runner := &fakeAPTRunner{responses: []fakeAPTResponse{
 		{stdout: []byte("amd64\n")},
@@ -216,12 +228,56 @@ func TestClientPackagesDetectsPackageStateRace(t *testing.T) {
 		func() time.Time { return now },
 	)
 
-	_, err := client.Packages(context.Background())
-	if err == nil || !strings.Contains(err.Error(), "package state changed") {
-		t.Fatalf("Packages() error = %v, want package-state race", err)
+	data, err := client.Packages(context.Background())
+	if err != nil {
+		t.Fatalf("Packages() error = %v, want a tolerated mid-collection upgrade", err)
+	}
+	// Installed now equals the candidate, so nothing is pending and no
+	// version comparison is needed.
+	if len(data.Updates) != 0 {
+		t.Fatalf("Updates = %#v, want none once the upgrade landed", data.Updates)
 	}
 	if got := len(runner.Requests()); got != 4 {
-		t.Fatalf("commands = %d, want no dpkg comparison after race", got)
+		t.Fatalf("commands = %d, want no dpkg comparison", got)
+	}
+}
+
+// A package purged mid-collection stops being installed, so apt reports
+// "Installed: (none)". It has no pending update and must not fail the check.
+func TestClientPackagesToleratesPackageRemovedMidCollection(t *testing.T) {
+	t.Parallel()
+
+	// The package was purged after enumeration, so apt reports no installed
+	// version and the dpkg status source is gone from the table.
+	policy := `libssl3t64:
+  Installed: (none)
+  Candidate: 3.5.7-1~deb13u2
+  Version table:
+     3.5.7-1~deb13u2 500
+        500 http://deb.debian.org/debian-security trixie-security/main amd64 Packages
+     3.5.6-1~deb13u2 500
+        500 http://deb.debian.org/debian trixie/main amd64 Packages
+`
+	now := time.Date(2026, time.August, 31, 12, 0, 0, 0, time.UTC)
+	runner := &fakeAPTRunner{responses: []fakeAPTResponse{
+		{stdout: []byte("amd64\n")},
+		{stdout: readAPTFixture(t, "debian13", "indextargets.txt")},
+		{stdout: readAPTFixture(t, "debian13", "dpkg-query.txt")},
+		{stdout: []byte(policy)},
+	}}
+	client := mustAPTClient(
+		t,
+		runner,
+		func(string) (fs.FileInfo, error) { return fakeFileInfo{mode: 0o644, modified: now}, nil },
+		func() time.Time { return now },
+	)
+
+	data, err := client.Packages(context.Background())
+	if err != nil {
+		t.Fatalf("Packages() error = %v, want a tolerated mid-collection removal", err)
+	}
+	if len(data.Updates) != 0 {
+		t.Fatalf("Updates = %#v, want none for an uninstalled package", data.Updates)
 	}
 }
 

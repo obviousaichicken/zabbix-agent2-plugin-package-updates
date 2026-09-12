@@ -1,3 +1,4 @@
+//nolint:testpackage // White-box: NEVRA handling is unexported.
 package dnf
 
 import (

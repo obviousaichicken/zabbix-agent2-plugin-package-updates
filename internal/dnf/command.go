@@ -27,7 +27,7 @@ func runCommand(
 		return result, &CommandError{
 			Command:    path + " " + strings.Join(args, " "),
 			ExitStatus: result.ExitCode,
-			Stderr:     strings.TrimSpace(string(result.Stderr)),
+			Diag:       command.Diagnostic(result.Stderr),
 			Err:        err,
 		}
 	}

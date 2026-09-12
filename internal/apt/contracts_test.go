@@ -1,3 +1,4 @@
+//nolint:testpackage // White-box: fixture contracts are checked against unexported parsers.
 package apt
 
 import (
@@ -13,6 +14,7 @@ var targetFixtureDirectories = []string{
 	"ubuntu2204",
 	"ubuntu2404",
 	"ubuntu2604",
+	"ubuntu2404-multiarch",
 }
 
 func TestTargetFormatFixtures(t *testing.T) {

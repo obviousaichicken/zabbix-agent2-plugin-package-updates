@@ -107,6 +107,7 @@ func TestNewResolvesCommandsFromPATH(t *testing.T) {
 	binDir := t.TempDir()
 	for _, name := range []string{"dnf", "rpm", "uname"} {
 		path := filepath.Join(binDir, name)
+		//nolint:gosec // A stub the test then executes must be executable.
 		if err := os.WriteFile(path, []byte("#!/bin/sh\n"), 0o700); err != nil {
 			t.Fatalf("write %s: %v", name, err)
 		}
@@ -139,6 +140,7 @@ func TestNewReturnsLookupErrors(t *testing.T) {
 	t.Run("reboot command missing", func(t *testing.T) {
 		binDir := t.TempDir()
 		dnfPath := filepath.Join(binDir, "dnf")
+		//nolint:gosec // A stub the test then executes must be executable.
 		if err := os.WriteFile(dnfPath, []byte("#!/bin/sh\n"), 0o700); err != nil {
 			t.Fatalf("write dnf: %v", err)
 		}

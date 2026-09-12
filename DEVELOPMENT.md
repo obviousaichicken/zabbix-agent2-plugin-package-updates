@@ -25,10 +25,33 @@ Run the core checks locally with:
 go test ./...
 go test -race ./...
 go vet ./...
+gofmt -l .
 ruby .github/ci/validate_templates.rb
 sh -n install.sh
 sh -n .dev/installer-test/dnf
+shellcheck install.sh .dev/installer-test/dnf
+go test -tags=integration ./internal/apt/
 ```
+
+The last of those needs a real `dpkg` on the machine. It covers the kernel
+comparison behind APT reboot detection, which containers cannot exercise:
+`/proc/sys/kernel/osrelease` reports the host kernel, so no kernel package
+inside a container will ever match the running release.
+
+Linting runs `golangci-lint`, configured in `.golangci.yml`. Build it with this
+module's toolchain rather than installing a release binary: published binaries
+are built with an older Go than the `go` directive in `go.mod`, and
+`golangci-lint` refuses to analyse a module targeting a newer language version
+than it was built with.
+
+```bash
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
+"$(go env GOPATH)/bin/golangci-lint" run ./...
+```
+
+Every linter named by a `//nolint` directive in this repository is enabled, and
+`nolintlint` rejects a directive that suppresses nothing or that omits an
+explanation. Add the waiver and the reason together, or fix the finding.
 
 The integration workflow additionally runs the collectors and installed plugin inside every supported distribution image, exercises representative Agent 2 versions, and validates the release installer paths.
 

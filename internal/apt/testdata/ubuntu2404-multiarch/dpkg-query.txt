@@ -1,0 +1,5 @@
+adduser|all|3.137ubuntu1|installed
+libc6:amd64|amd64|2.39-0ubuntu8.9|installed
+libc6:i386|i386|2.39-0ubuntu8.9|installed
+libgcc-s1:amd64|amd64|14.2.0-4ubuntu2~24.04.1|installed
+libgcc-s1:i386|i386|14.2.0-4ubuntu2~24.04.1|installed

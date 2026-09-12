@@ -1,3 +1,4 @@
+//nolint:testpackage // White-box: policy parsing internals are unexported.
 package apt
 
 import (
@@ -24,7 +25,7 @@ func TestParsePackagePoliciesFixtures(t *testing.T) {
 				t.Fatalf("parse repository indexes: %v", err)
 			}
 			data := readAPTFixture(t, directory, "policy.txt")
-			policies, err := ParsePackagePolicies(data, installed, indexes)
+			policies, err := ParsePackagePolicies(data, amd64Request(installed), indexes)
 			if err != nil {
 				t.Fatalf("parse package policies: %v", err)
 			}
@@ -45,7 +46,7 @@ func TestParsePackagePoliciesFixtures(t *testing.T) {
 				}
 			}
 
-			again, err := ParsePackagePolicies(data, installed, indexes)
+			again, err := ParsePackagePolicies(data, amd64Request(installed), indexes)
 			if err != nil {
 				t.Fatalf("parse package policies again: %v", err)
 			}
@@ -75,7 +76,7 @@ func TestParsePackagePoliciesPinningPhasingAndHeldPackage(t *testing.T) {
         -1 https://unknown.example/debian trixie/main amd64 Packages
 `)
 
-	policies, err := ParsePackagePolicies(data, requested, indexes)
+	policies, err := ParsePackagePolicies(data, amd64Request(requested), indexes)
 	if err != nil {
 		t.Fatalf("parse package policy: %v", err)
 	}
@@ -102,7 +103,9 @@ func TestParsePackagePoliciesMultiarch(t *testing.T) {
 		{Name: "libmulti", Architecture: "amd64", Version: mustDebianVersion(t, "1.0-1")},
 		{Name: "libmulti", Architecture: "i386", Version: mustDebianVersion(t, "1.0-1")},
 	}
-	data := []byte(`libmulti:amd64:
+	// apt prints the native (amd64) package unqualified; only i386 is
+	// qualified. Anything else is not output apt can produce.
+	data := []byte(`libmulti:
   Installed: 1.0-1
   Candidate: 1.1-1
   Version table:
@@ -120,7 +123,7 @@ libmulti:i386:
         100 /var/lib/dpkg/status
 `)
 
-	policies, err := ParsePackagePolicies(data, requested, indexes)
+	policies, err := ParsePackagePolicies(data, amd64Request(requested), indexes)
 	if err != nil {
 		t.Fatalf("parse multiarch policies: %v", err)
 	}
@@ -147,7 +150,7 @@ func TestParsePackagePoliciesArchitectureAll(t *testing.T) {
         100 /var/lib/dpkg/status
 `)
 
-	policies, err := ParsePackagePolicies(data, requested, indexes)
+	policies, err := ParsePackagePolicies(data, amd64Request(requested), indexes)
 	if err != nil {
 		t.Fatalf("parse architecture-all policy: %v", err)
 	}
@@ -193,7 +196,7 @@ func TestParsePackagePoliciesLocalAndAbsentCandidates(t *testing.T) {
 			requested := []InstalledPackage{{
 				Name: "local-pkg", Architecture: "amd64", Version: mustDebianVersion(t, "1.0-1"),
 			}}
-			policies, err := ParsePackagePolicies([]byte(test.data), requested, RepositoryIndexes{})
+			policies, err := ParsePackagePolicies([]byte(test.data), amd64Request(requested), RepositoryIndexes{})
 			if err != nil {
 				t.Fatalf("parse local package policy: %v", err)
 			}
@@ -227,7 +230,7 @@ func TestParsePackagePoliciesPreservesCandidateSourceOrderAndPriorities(t *testi
         100 /var/lib/dpkg/status
 `)
 
-	policies, err := ParsePackagePolicies(data, requested, indexes)
+	policies, err := ParsePackagePolicies(data, amd64Request(requested), indexes)
 	if err != nil {
 		t.Fatalf("parse ordered sources: %v", err)
 	}
@@ -256,7 +259,7 @@ func TestParsePackagePoliciesFailsClosedOnCandidateSourceMismatch(t *testing.T) 
         100 /var/lib/dpkg/status
 `)
 
-	_, err := ParsePackagePolicies(data, requested, indexes)
+	_, err := ParsePackagePolicies(data, amd64Request(requested), indexes)
 	if err == nil || !strings.Contains(err.Error(), "no matching APT index target") {
 		t.Fatalf("error = %v, want fail-closed source mismatch", err)
 	}
@@ -270,6 +273,7 @@ func TestParsePackagePoliciesFailsClosedOnCandidateSourceMismatch(t *testing.T) 
 func TestParsePackagePoliciesRedactsMatchingSourceCredentials(t *testing.T) {
 	t.Parallel()
 
+	//nolint:gosec // A fake credential URL is what this test redacts.
 	target := aptTargetRecord(targetRecordOptions{
 		descriptionURL: "https://index-user:index-secret@packages.example/debian",
 		repositoryURL:  "https://index-user:index-secret@packages.example/debian/",
@@ -288,7 +292,7 @@ func TestParsePackagePoliciesRedactsMatchingSourceCredentials(t *testing.T) {
         100 /var/lib/dpkg/status
 `)
 
-	policies, err := ParsePackagePolicies(data, requested, indexes)
+	policies, err := ParsePackagePolicies(data, amd64Request(requested), indexes)
 	if err != nil {
 		t.Fatalf("parse credentialed policy source: %v", err)
 	}
@@ -363,7 +367,6 @@ func TestParsePackagePoliciesRejectsSemanticMismatches(t *testing.T) {
 	}{
 		{name: "candidate absent from table", data: strings.Replace(base, "Candidate: 2.0-1", "Candidate: 3.0-1", 1), want: "no exact version-table entry"},
 		{name: "installed marker mismatch", data: strings.Replace(base, "*** 1.0-1", "*** 2.0-1", 1), want: "duplicate version-table version"},
-		{name: "missing returned block", data: "", want: "returned 0 package blocks"},
 		{name: "extra returned block", data: base + base, want: "returned 2 package blocks"},
 	}
 
@@ -372,7 +375,7 @@ func TestParsePackagePoliciesRejectsSemanticMismatches(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := ParsePackagePolicies([]byte(test.data), requested, indexes)
+			_, err := ParsePackagePolicies([]byte(test.data), amd64Request(requested), indexes)
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("error = %v, want substring %q", err, test.want)
 			}
@@ -380,7 +383,40 @@ func TestParsePackagePoliciesRejectsSemanticMismatches(t *testing.T) {
 	}
 }
 
-func TestParsePackagePoliciesRejectsAmbiguousUnqualifiedMultiarchHeader(t *testing.T) {
+// apt prints the native architecture's package header unqualified and only
+// qualifies foreign architectures, so a multi-arch host emits exactly this
+// shape. Resolving it by name uniqueness used to fail the whole collection.
+// A package purged between enumeration and the policy query stops being known
+// to apt, which then prints no block for it. That is drift, not corruption, so
+// the remaining blocks must still parse.
+func TestParsePackagePoliciesToleratesMissingBlocks(t *testing.T) {
+	t.Parallel()
+
+	indexes := mustPolicyIndexes(t, aptTargetRecord(targetRecordOptions{}))
+	requested := []InstalledPackage{
+		{Name: "kept-pkg", Architecture: "amd64", Version: mustDebianVersion(t, "1.0-1")},
+		{Name: "purged-pkg", Architecture: "amd64", Version: mustDebianVersion(t, "1.0-1")},
+	}
+	data := []byte(`kept-pkg:
+  Installed: 1.0-1
+  Candidate: 2.0-1
+  Version table:
+     2.0-1 500
+        500 https://packages.example/debian trixie/main amd64 Packages
+ *** 1.0-1 100
+        100 /var/lib/dpkg/status
+`)
+
+	policies, err := ParsePackagePolicies(data, amd64Request(requested), indexes)
+	if err != nil {
+		t.Fatalf("ParsePackagePolicies() error = %v, want a tolerated missing block", err)
+	}
+	if len(policies) != 1 || policies[0].Name != "kept-pkg" {
+		t.Fatalf("policies = %#v, want only the surviving package", policies)
+	}
+}
+
+func TestParsePackagePoliciesResolvesNativeUnqualifiedMultiarchHeaders(t *testing.T) {
 	t.Parallel()
 
 	requested := []InstalledPackage{
@@ -396,10 +432,122 @@ libmulti:i386:
   Candidate: (none)
   Version table:
 `)
-	_, err := ParsePackagePolicies(data, requested, RepositoryIndexes{})
-	if err == nil || !strings.Contains(err.Error(), "ambiguous") {
-		t.Fatalf("error = %v, want ambiguous header", err)
+
+	policies, err := ParsePackagePolicies(data, amd64Request(requested), RepositoryIndexes{})
+	if err != nil {
+		t.Fatalf("ParsePackagePolicies() error = %v", err)
 	}
+	if len(policies) != 2 ||
+		policies[0].Name != "libmulti" || policies[0].Architecture != "amd64" ||
+		policies[1].Name != "libmulti" || policies[1].Architecture != "i386" {
+		t.Fatalf("policies = %#v, want one amd64 and one i386 entry", policies)
+	}
+}
+
+// The same name installed for two foreign architectures on a host whose native
+// architecture is a third one: every header is qualified and nothing resolves
+// to the native architecture.
+func TestParsePackagePoliciesResolvesFullyQualifiedForeignHeaders(t *testing.T) {
+	t.Parallel()
+
+	requested := []InstalledPackage{
+		{Name: "libmulti", Architecture: "armhf"},
+		{Name: "libmulti", Architecture: "i386"},
+	}
+	data := []byte(`libmulti:armhf:
+  Installed: (none)
+  Candidate: (none)
+  Version table:
+libmulti:i386:
+  Installed: (none)
+  Candidate: (none)
+  Version table:
+`)
+
+	policies, err := ParsePackagePolicies(
+		data,
+		PolicyRequest{Packages: requested, NativeArchitecture: "arm64"},
+		RepositoryIndexes{},
+	)
+	if err != nil {
+		t.Fatalf("ParsePackagePolicies() error = %v", err)
+	}
+	if len(policies) != 2 || policies[0].Architecture != "armhf" || policies[1].Architecture != "i386" {
+		t.Fatalf("policies = %#v", policies)
+	}
+}
+
+func TestParsePackagePoliciesRejectsUnresolvableHeaders(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		native    string
+		requested []InstalledPackage
+		data      string
+		want      string
+	}{
+		{
+			name:      "unqualified header for a foreign-only package",
+			native:    "amd64",
+			requested: []InstalledPackage{{Name: "libmulti", Architecture: "i386"}},
+			data: `libmulti:
+  Installed: (none)
+  Candidate: (none)
+  Version table:
+`,
+			want: "matches no requested amd64 or all package",
+		},
+		{
+			name:      "qualified header that was never requested",
+			native:    "amd64",
+			requested: []InstalledPackage{{Name: "libmulti", Architecture: "amd64"}},
+			data: `libmulti:i386:
+  Installed: (none)
+  Candidate: (none)
+  Version table:
+`,
+			want: "unrequested package header",
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := ParsePackagePolicies(
+				[]byte(test.data),
+				PolicyRequest{Packages: test.requested, NativeArchitecture: test.native},
+				RepositoryIndexes{},
+			)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %v, want substring %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestParsePackagePoliciesRequiresNativeArchitecture(t *testing.T) {
+	t.Parallel()
+
+	requested := []InstalledPackage{{Name: "pkg", Architecture: "amd64"}}
+	for _, native := range []string{"", "AMD64", "amd 64"} {
+		_, err := ParsePackagePolicies(
+			nil,
+			PolicyRequest{Packages: requested, NativeArchitecture: native},
+			RepositoryIndexes{},
+		)
+		if err == nil || !strings.Contains(err.Error(), "valid native architecture") {
+			t.Errorf("native %q error = %v, want native-architecture rejection", native, err)
+		}
+	}
+}
+
+// amd64Request wraps a plain package list for the amd64 hosts every captured
+// fixture was taken from.
+func amd64Request(packages []InstalledPackage) PolicyRequest {
+	return PolicyRequest{Packages: packages, NativeArchitecture: "amd64"}
 }
 
 func mustPolicyIndexes(t *testing.T, records string) RepositoryIndexes {

@@ -82,38 +82,57 @@ func newHistoryReaderForTest(
 
 // LastUpdate returns the newest retained completed or explicitly failed APT
 // transaction containing Upgrade. A nil result means not recorded.
-func (reader *HistoryReader) LastUpdate(ctx context.Context) (*packageinfo.LastUpdate, error) {
+//
+// APT history is declared a best-effort capability, and it is a small part of
+// a payload whose real job is repositories, updates and reboot state. A log
+// this reader cannot read or parse - unreadable by the zabbix user, truncated,
+// rotated into an unexpected shape - therefore yields "not recorded" rather
+// than failing the whole check. Only cancellation propagates, because a
+// cancelled context means the caller is no longer interested in any result.
+func (reader *HistoryReader) LastUpdate(
+	ctx context.Context,
+) (*packageinfo.LastUpdate, string, error) {
 	files, err := reader.historyFiles(ctx)
 	if err != nil {
-		return nil, err
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, "", ctxErr
+		}
+
+		return nil, "history directory is unreadable", nil
 	}
 	remainingBytes := int64(maxHistoryTotalBytes)
 	for _, file := range files {
-		if err := ctx.Err(); err != nil {
-			return nil, err
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, "", ctxErr
 		}
 		data, readErr := reader.readHistoryFile(file, &remainingBytes)
 		if readErr != nil {
-			return nil, readErr
+			// A log that cannot be read tells us nothing about the
+			// transactions it held, so stop rather than reporting an older
+			// one as the most recent.
+			return nil, file.description() + " is unreadable", nil
 		}
 		stanzas, parseErr := parseHistory(data, reader.location)
 		if parseErr != nil {
-			return nil, fmt.Errorf("parse APT history %s: %w", file.description(), parseErr)
+			return nil, file.description() + " is malformed", nil
 		}
-		if update, found, selectErr := newestQualifyingHistory(stanzas); selectErr != nil {
-			return nil, fmt.Errorf("select APT history %s: %w", file.description(), selectErr)
-		} else if found {
-			return update, nil
+		update, found, selectErr := newestQualifyingHistory(stanzas)
+		if selectErr != nil {
+			return nil, file.description() + " has an unusable Upgrade stanza", nil
+		}
+		if found {
+			return update, "", nil
 		}
 	}
 
-	return nil, nil
+	return nil, "", nil
 }
 
 // LastUpdate reads APT history through the client's immutable history reader.
-func (client *Client) LastUpdate(ctx context.Context) (*packageinfo.LastUpdate, error) {
+// The second result is a non-fatal reason history is unavailable.
+func (client *Client) LastUpdate(ctx context.Context) (*packageinfo.LastUpdate, string, error) {
 	if client.history == nil {
-		return nil, errors.New("APT history reader is not configured")
+		return nil, "", errors.New("APT history reader is not configured")
 	}
 
 	return client.history.LastUpdate(ctx)
@@ -157,15 +176,12 @@ func (reader *HistoryReader) historyFiles(ctx context.Context) ([]historyFile, e
 		if !relevant {
 			continue
 		}
-		if len(files) >= maxHistoryFiles {
-			return nil, fmt.Errorf("APT history contains more than %d relevant files", maxHistoryFiles)
-		}
 		info, infoErr := entry.Info()
 		if infoErr != nil {
-			return nil, &historyAccessError{operation: "inspect APT history file", err: infoErr}
+			continue
 		}
 		if !info.Mode().IsRegular() {
-			return nil, fmt.Errorf("APT history %s is not a regular file", historyFile{rotation: rotation, compressed: compressed}.description())
+			continue
 		}
 		files = append(files, historyFile{
 			path:       filepath.Join(reader.directory, entry.Name()),
@@ -184,6 +200,13 @@ func (reader *HistoryReader) historyFiles(ctx context.Context) ([]historyFile, e
 
 		return files[left].path < files[right].path
 	})
+
+	// The newest logs answer the question; a host retaining more than the
+	// bound is not a reason to report nothing. Rotation 0 is the current log,
+	// so the lowest rotations are the newest.
+	if len(files) > maxHistoryFiles {
+		files = files[:maxHistoryFiles]
+	}
 
 	return files, nil
 }
@@ -268,6 +291,7 @@ type historyStanza struct {
 	failed  bool
 }
 
+//nolint:cyclop,funlen // A deb822 state machine: each branch is one line shape.
 func parseHistory(data []byte, location *time.Location) ([]historyStanza, error) {
 	if location == nil {
 		return nil, errors.New("history timezone is required")

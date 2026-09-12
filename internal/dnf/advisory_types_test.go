@@ -1,3 +1,4 @@
+//nolint:testpackage // White-box: advisory type mapping is unexported.
 package dnf
 
 import "testing"

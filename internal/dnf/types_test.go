@@ -1,3 +1,4 @@
+//nolint:testpackage // White-box: CommandError fields are unexported.
 package dnf
 
 import (

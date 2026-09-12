@@ -5,7 +5,11 @@ on:
   pull_request:
   merge_group:
   push:
-    branches: [main]
+    # Development branches build too. Without this, work in progress is only
+    # ever verified by a manual dispatch, which is easy to forget precisely
+    # when it matters. Pull requests and main are covered by the triggers
+    # above; this covers the branch before a pull request exists.
+    branches: [main, 'claude/**']
   workflow_dispatch:
 
 permissions:
@@ -195,11 +199,36 @@ jobs:
             agent-version: "7.0"
             dockerfile: .dev/Dockerfile.apt
             build-args: BASE_IMAGE=ubuntu:24.04 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest_7.0+ubuntu24.04_all.deb
+          # Zabbix publishes a repository only for the releases it builds for,
+          # which excludes interim Ubuntu releases. These two therefore leave
+          # ZABBIX_RELEASE_URL unset and install zabbix-agent2 from Ubuntu
+          # universe instead, the way an operator on such a host does.
+          - name: Ubuntu 25.04 / APT / Zabbix 7.0
+            image: ubuntu:25.04
+            agent-version: "7.0"
+            dockerfile: .dev/Dockerfile.apt
+            build-args: BASE_IMAGE=ubuntu:25.04
+          - name: Ubuntu 25.10 / APT / Zabbix 7.0
+            image: ubuntu:25.10
+            agent-version: "7.0"
+            dockerfile: .dev/Dockerfile.apt
+            build-args: BASE_IMAGE=ubuntu:25.10
           - name: Ubuntu 26.04 / APT / Zabbix 7.4
             image: ubuntu:26.04
             agent-version: "7.4"
             dockerfile: .dev/Dockerfile.apt
             build-args: BASE_IMAGE=ubuntu:26.04 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.4/release/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest_7.4+ubuntu26.04_all.deb
+          # Linux Mint is reached through ID_LIKE rather than ID, and its
+          # VERSION_ID is Mint's own rather than the Ubuntu base's. install.sh
+          # reads the real /etc/os-release during the image build, so this row
+          # proves both rules against a genuine derivative rather than against
+          # a fixture someone wrote. Mint 22 is built on Ubuntu 24.04, so that
+          # is the Zabbix repository a Mint operator installs.
+          - name: Linux Mint 22 / APT / Zabbix 7.0
+            image: linuxmintd/mint22-amd64
+            agent-version: "7.0"
+            dockerfile: .dev/Dockerfile.apt
+            build-args: BASE_IMAGE=linuxmintd/mint22-amd64 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest_7.0+ubuntu24.04_all.deb
 
     steps:
       - uses: actions/checkout@v7
@@ -215,9 +244,11 @@ jobs:
       - name: Run read-only APT integration test as zabbix
         env:
           IMAGE: ${{ matrix.image }}
+          FOREIGN_ARCHITECTURE: i386
         run: |
           docker pull "$IMAGE"
           docker run --rm \
+            --env FOREIGN_ARCHITECTURE \
             --volume "$GITHUB_WORKSPACE:/src:ro" \
             --workdir /src \
             "$IMAGE" \
@@ -226,6 +257,22 @@ jobs:
               export DEBIAN_FRONTEND=noninteractive
               apt-get update
               apt-get install -y --no-install-recommends passwd util-linux
+              # apt-cache policy omits the ":architecture" qualifier for the
+              # native architecture and appends it for every foreign one, so a
+              # single-architecture container never exercises how a qualified
+              # header is resolved. Every APT job therefore enables a foreign
+              # architecture unconditionally: a per-matrix opt-in would pass
+              # silently on any job the flag failed to reach, which is the
+              # exact blind spot that let the multi-arch defect ship.
+              dpkg --add-architecture "$FOREIGN_ARCHITECTURE"
+              apt-get update
+              apt-get install -y --no-install-recommends "libgcc-s1:${FOREIGN_ARCHITECTURE}"
+              foreign="$(dpkg-query --show --showformat='"'"'${binary:Package} ${Architecture}\n'"'"' | grep -c " ${FOREIGN_ARCHITECTURE}$" || true)"
+              if [ "$foreign" -eq 0 ]; then
+                echo "no ${FOREIGN_ARCHITECTURE} package is installed" >&2
+                exit 1
+              fi
+              echo "multi-arch verified: ${foreign} ${FOREIGN_ARCHITECTURE} packages installed"
               command -v apt-get
               command -v apt-cache
               command -v dpkg-query

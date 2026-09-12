@@ -5,7 +5,11 @@ on:
   pull_request:
   merge_group:
   push:
-    branches: [main]
+    # Development branches build too. Without this, work in progress is only
+    # ever verified by a manual dispatch, which is easy to forget precisely
+    # when it matters. Pull requests and main are covered by the triggers
+    # above; this covers the branch before a pull request exists.
+    branches: [main, 'claude/**']
   workflow_dispatch:
 
 permissions:
@@ -31,13 +35,37 @@ jobs:
       - name: Run tests with race detector
         run: go test -race ./...
 
+      # The kernel comparison shells out to dpkg. The runner has dpkg, and a
+      # container cannot cover this: /proc/sys/kernel/osrelease reports the
+      # host kernel, which no packaged kernel in the container ever matches.
+      - name: Run dpkg-backed collector tests
+        run: go test -tags=integration ./internal/apt/
+
       - name: Run Go vet
         run: go vet ./...
+
+      - name: Check formatting
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            printf 'gofmt reported unformatted files:\n%s\n' "$unformatted" >&2
+            exit 1
+          fi
+
+      # Built from source with this module's toolchain rather than taken from
+      # a release: the published binaries are built with an older Go than the
+      # go directive here, and golangci-lint refuses to analyse a module that
+      # targets a newer language version than it was built with.
+      - name: Run golangci-lint
+        run: |
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
+          "$(go env GOPATH)/bin/golangci-lint" run ./...
 
       - name: Validate installer scripts
         run: |
           sh -n install.sh
           sh -n .dev/installer-test/dnf
+          shellcheck install.sh .dev/installer-test/dnf
 
       - name: Scan for vulnerabilities
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...

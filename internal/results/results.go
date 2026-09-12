@@ -10,13 +10,13 @@ import (
 // Collection records collection status and duration.
 type Collection struct {
 	Complete   bool  `json:"complete"`
-	DurationMS int64 `json:"duration_ms"` //nolint:tagliatelle // JSON schema uses snake_case.
+	DurationMS int64 `json:"duration_ms"`
 }
 
 // Classification records advisory category completeness.
 type Classification struct {
 	Complete         bool     `json:"complete"`
-	FailedCategories []string `json:"failed_categories"` //nolint:tagliatelle // JSON schema uses snake_case.
+	FailedCategories []string `json:"failed_categories"`
 }
 
 // Summary contains collection counts.
@@ -59,5 +59,5 @@ func NewLastUpdate(update *packageinfo.LastUpdate) LastUpdate {
 type Repository struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
-	UpdateCount int    `json:"update_count"` //nolint:tagliatelle // JSON schema uses snake_case.
+	UpdateCount int    `json:"update_count"`
 }

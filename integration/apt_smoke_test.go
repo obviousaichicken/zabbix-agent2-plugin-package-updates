@@ -40,6 +40,28 @@ func TestAPTSmoke(t *testing.T) {
 		t.Fatalf("Collect().Metadata = %#v, want complete non-negative age", snapshot.Metadata)
 	}
 
+	// This test runs immediately after apt-get update, so the reported age
+	// must be minutes, not the release date of the oldest immutable pocket.
+	// Asserting only "not negative" let an index-mtime implementation ship
+	// that reported years of staleness on every freshly refreshed host.
+	const freshMetadataAge = int64(time.Hour / time.Second)
+	if *snapshot.Metadata.AgeSeconds > freshMetadataAge {
+		t.Fatalf(
+			"Collect().Metadata age = %ds (refreshed %s) after apt-get update, want at most %ds",
+			*snapshot.Metadata.AgeSeconds,
+			snapshot.Metadata.RefreshedAt,
+			freshMetadataAge,
+		)
+	}
+
+	// A multi-arch host is the only configuration where apt-cache policy
+	// emits both qualified and unqualified package headers.
+	architectures := make(map[string]struct{})
+	for _, update := range snapshot.Updates {
+		architectures[update.Arch] = struct{}{}
+	}
+	t.Logf("update architectures: %v", architectures)
+
 	security := 0
 	other := 0
 	for _, update := range snapshot.Updates {

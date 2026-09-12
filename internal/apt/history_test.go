@@ -1,3 +1,4 @@
+//nolint:testpackage // White-box: the history reader and its bounds are unexported.
 package apt
 
 import (
@@ -78,7 +79,7 @@ Upgrade: unfinished:amd64 (1.0, 2.0)
 			writeHistoryFile(t, directory, historyBaseName, []byte(test.history), false)
 			reader := mustHistoryReader(t, osHistoryFileSystem{}, directory, location)
 
-			update, err := reader.LastUpdate(context.Background())
+			update, _, err := reader.LastUpdate(context.Background())
 			if err != nil {
 				t.Fatalf("LastUpdate() error = %v", err)
 			}
@@ -104,7 +105,7 @@ Upgrade: unfinished:amd64 (1.0, 2.0)
 	}
 	reader := mustHistoryReader(t, osHistoryFileSystem{}, directory, time.UTC)
 
-	update, err := reader.LastUpdate(context.Background())
+	update, _, err := reader.LastUpdate(context.Background())
 	if err != nil {
 		t.Fatalf("LastUpdate() error = %v", err)
 	}
@@ -121,7 +122,7 @@ func TestHistoryReaderReadsGzipRotation(t *testing.T) {
 	writeHistoryFile(t, directory, historyBaseName+".2.gz", []byte(successHistory("2026-08-28 10:00:00")), true)
 	reader := mustHistoryReader(t, osHistoryFileSystem{}, directory, time.UTC)
 
-	update, err := reader.LastUpdate(context.Background())
+	update, _, err := reader.LastUpdate(context.Background())
 	if err != nil {
 		t.Fatalf("LastUpdate() error = %v", err)
 	}
@@ -142,7 +143,7 @@ func TestHistoryReaderReturnsNotRecorded(t *testing.T) {
 			filepath.Join(t.TempDir(), "missing"),
 			time.UTC,
 		)
-		update, err := reader.LastUpdate(context.Background())
+		update, _, err := reader.LastUpdate(context.Background())
 		if err != nil || update != nil {
 			t.Fatalf("LastUpdate() = %#v, %v; want not recorded", update, err)
 		}
@@ -157,7 +158,7 @@ Install: new-pkg:amd64 (1.0)
 End-Date: 2026-08-30  09:01:00
 `), false)
 		reader := mustHistoryReader(t, osHistoryFileSystem{}, directory, time.UTC)
-		update, err := reader.LastUpdate(context.Background())
+		update, _, err := reader.LastUpdate(context.Background())
 		if err != nil || update != nil {
 			t.Fatalf("LastUpdate() = %#v, %v; want not recorded", update, err)
 		}
@@ -208,9 +209,15 @@ func TestHistoryReaderRejectsMalformedExistingLogs(t *testing.T) {
 				writeHistoryFile(t, directory, name, test.content, false)
 			}
 			reader := mustHistoryReader(t, osHistoryFileSystem{}, directory, time.UTC)
-			_, err := reader.LastUpdate(context.Background())
-			if err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("LastUpdate() error = %v, want substring %q", err, test.want)
+			update, warning, err := reader.LastUpdate(context.Background())
+			if err != nil {
+				t.Fatalf("LastUpdate() error = %v, want a degraded result", err)
+			}
+			if update != nil {
+				t.Fatalf("LastUpdate() = %#v, want not recorded", update)
+			}
+			if warning == "" {
+				t.Fatal("degradation was silent, want a reported reason")
 			}
 		})
 	}
@@ -239,9 +246,12 @@ func TestHistoryReaderRejectsOversizeReads(t *testing.T) {
 			}
 			writeHistoryFile(t, directory, name, test.content, test.compressed)
 			reader := mustHistoryReader(t, osHistoryFileSystem{}, directory, time.UTC)
-			_, err := reader.LastUpdate(context.Background())
-			if err == nil || !strings.Contains(err.Error(), "exceeds") {
-				t.Fatalf("LastUpdate() error = %v, want size failure", err)
+			update, warning, err := reader.LastUpdate(context.Background())
+			if err != nil || update != nil {
+				t.Fatalf("LastUpdate() = %#v, %v; want a degraded result", update, err)
+			}
+			if !strings.Contains(warning, "unreadable") {
+				t.Fatalf("warning = %q, want an unreadable-log reason", warning)
 			}
 		})
 	}
@@ -257,13 +267,16 @@ func TestHistoryReaderRejectsUnreadableFilesSafely(t *testing.T) {
 	}
 	reader := mustHistoryReader(t, fileSystem, "/private/alice:s3cr3t", time.UTC)
 
-	_, err := reader.LastUpdate(context.Background())
-	if !errors.Is(err, sentinel) {
-		t.Fatalf("LastUpdate() error = %v, want sentinel", err)
+	update, warning, err := reader.LastUpdate(context.Background())
+	if err != nil || update != nil {
+		t.Fatalf("LastUpdate() = %#v, %v; want a degraded result, not a failed check", update, err)
+	}
+	if warning == "" {
+		t.Fatal("an unreadable history log degraded silently")
 	}
 	for _, secret := range []string{"alice", "s3cr3t", "/private/"} {
-		if strings.Contains(err.Error(), secret) {
-			t.Errorf("LastUpdate() error exposes path detail %q: %v", secret, err)
+		if strings.Contains(warning, secret) {
+			t.Errorf("warning exposes path detail %q: %s", secret, warning)
 		}
 	}
 }
@@ -276,7 +289,7 @@ func TestHistoryReaderHonorsCancellation(t *testing.T) {
 	fileSystem := &fakeHistoryFileSystem{}
 	reader := mustHistoryReader(t, fileSystem, "/var/log/apt", time.UTC)
 
-	_, err := reader.LastUpdate(ctx)
+	_, _, err := reader.LastUpdate(ctx)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("LastUpdate() error = %v, want context canceled", err)
 	}
@@ -289,14 +302,33 @@ func TestHistoryReaderBoundsRelevantFiles(t *testing.T) {
 	t.Parallel()
 
 	directory := t.TempDir()
-	for rotation := 1; rotation <= maxHistoryFiles+1; rotation++ {
+	// The newest log holds the answer; the rest are only there to exceed the
+	// retained-file bound.
+	writeHistoryFile(t, directory, historyBaseName, []byte(
+		"Start-Date: 2026-08-30  09:00:00\nUpgrade: pkg:amd64 (1.0, 2.0)\nEnd-Date: 2026-08-30  09:01:00\n",
+	), false)
+	for rotation := 1; rotation <= maxHistoryFiles+8; rotation++ {
 		writeHistoryFile(t, directory, historyBaseName+"."+strconv.Itoa(rotation), nil, false)
 	}
 	reader := mustHistoryReader(t, osHistoryFileSystem{}, directory, time.UTC)
 
-	_, err := reader.LastUpdate(context.Background())
-	if err == nil || !strings.Contains(err.Error(), "more than") {
-		t.Fatalf("LastUpdate() error = %v, want relevant-file bound", err)
+	files, err := reader.historyFiles(context.Background())
+	if err != nil {
+		t.Fatalf("historyFiles() error = %v", err)
+	}
+	if len(files) != maxHistoryFiles {
+		t.Fatalf("files = %d, want the bound of %d", len(files), maxHistoryFiles)
+	}
+	if files[0].rotation != 0 {
+		t.Fatalf("first file rotation = %d, want the current log", files[0].rotation)
+	}
+
+	update, warning, err := reader.LastUpdate(context.Background())
+	if err != nil {
+		t.Fatalf("LastUpdate() error = %v, want the newest retained logs to be read", err)
+	}
+	if update == nil || update.Result != packageinfo.LastUpdateResultSuccess {
+		t.Fatalf("LastUpdate() = %#v, %q; want the newest log's success", update, warning)
 	}
 }
 

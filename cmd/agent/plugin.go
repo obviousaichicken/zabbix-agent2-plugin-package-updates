@@ -68,9 +68,13 @@ type Plugin struct {
 	backendOption    string
 	configurationErr error
 
-	backendOnce sync.Once
-	backend     backendRuntime
-	backendErr  error
+	// backendMu guards the cached backend. It is always acquired before
+	// lifecycleMu, never the other way round, so Configure must not hold
+	// lifecycleMu when it invalidates the cache.
+	backendMu    sync.Mutex
+	backend      backendRuntime
+	backendErr   error
+	backendReady bool
 
 	lifecycleMu sync.Mutex
 	lifecycle   context.Context
@@ -100,21 +104,50 @@ func newPluginWithSystem(
 	return p
 }
 
+// Configure applies agent configuration. Agent 2 calls it again on a runtime
+// configuration reload, so a changed backend selection must discard the cached
+// backend; otherwise Plugins.PackageUpdates.Backend would silently need a full
+// agent restart to take effect.
 func (p *Plugin) Configure(global *plugin.GlobalOptions, privateOptions any) {
 	backendOption, configurationErr := parseBackendOption(privateOptions)
 
 	p.lifecycleMu.Lock()
-	defer p.lifecycleMu.Unlock()
+	changed := p.backendOption != backendOption ||
+		configurationErrorText(p.configurationErr) != configurationErrorText(configurationErr)
 	p.backendOption = backendOption
 	p.configurationErr = configurationErr
 
 	if global == nil || global.Timeout <= 0 {
 		p.timeout = defaultTimeout
+	} else {
+		p.timeout = time.Duration(global.Timeout) * time.Second
+	}
+	p.lifecycleMu.Unlock()
 
-		return
+	// Invalidate outside lifecycleMu to preserve the backendMu -> lifecycleMu
+	// lock order that loadBackend relies on.
+	if changed {
+		p.invalidateBackend()
+	}
+}
+
+// configurationErrorText compares configuration errors by message, since they
+// are produced fresh on every parse and never compare equal by identity.
+func configurationErrorText(err error) string {
+	if err == nil {
+		return ""
 	}
 
-	p.timeout = time.Duration(global.Timeout) * time.Second
+	return err.Error()
+}
+
+func (p *Plugin) invalidateBackend() {
+	p.backendMu.Lock()
+	defer p.backendMu.Unlock()
+
+	p.backend = backendRuntime{}
+	p.backendErr = nil
+	p.backendReady = false
 }
 
 func (*Plugin) Validate(privateOptions any) error {
@@ -210,6 +243,7 @@ func (p *Plugin) Stop() {
 	p.exports.Wait()
 }
 
+//nolint:funlen // One dispatch point for both item keys and their logging.
 func (p *Plugin) Export(
 	key string,
 	params []string,
@@ -238,7 +272,7 @@ func (p *Plugin) Export(
 		rebootPending bool
 		advisories    int
 		uniqueCVEs    int
-		backend       = packageinfo.BackendDNF
+		backend       = packageinfo.BackendUnknown
 	)
 	switch key {
 	case metricPackagesGet:
@@ -351,6 +385,24 @@ func requestTimeout(
 	return defaultTimeout
 }
 
+// configuredBackend reports the backend the operator selected, for use when
+// the real backend could not be built. Reporting a guess instead attributes
+// every APT host's startup failure to DNF.
+func (p *Plugin) configuredBackend() packageinfo.Backend {
+	p.lifecycleMu.Lock()
+	configured := p.backendOption
+	p.lifecycleMu.Unlock()
+
+	switch configured {
+	case backendDNF:
+		return packageinfo.BackendDNF
+	case backendAPT:
+		return packageinfo.BackendAPT
+	default:
+		return packageinfo.BackendUnknown
+	}
+}
+
 func backendMismatchError(key string, backend packageinfo.Backend) error {
 	return fmt.Errorf("%s requires the DNF backend; detected %s", key, backend.String())
 }
@@ -358,7 +410,7 @@ func backendMismatchError(key string, backend packageinfo.Backend) error {
 func (p *Plugin) collectPackages(ctx context.Context) (results.PackagePayload, error) {
 	runtime, err := p.loadBackend()
 	if err != nil {
-		p.logFailure(packageinfo.BackendDNF, "initialization", err)
+		p.logFailure(p.configuredBackend(), "initialization", err)
 
 		return results.PackagePayload{}, err
 	}
@@ -368,6 +420,16 @@ func (p *Plugin) collectPackages(ctx context.Context) (results.PackagePayload, e
 		p.logFailure(runtime.Backend, "packages", err)
 
 		return results.PackagePayload{}, err
+	}
+
+	for _, warning := range snapshot.Warnings {
+		if p.logger != nil {
+			p.logger.Warn(
+				"collection degraded",
+				"backend", runtime.Backend.String(),
+				"warning", warning,
+			)
+		}
 	}
 
 	payload, err := results.BuildPackages(snapshot)
@@ -383,7 +445,7 @@ func (p *Plugin) collectPackages(ctx context.Context) (results.PackagePayload, e
 func (p *Plugin) collectAdvisories(ctx context.Context) (results.AdvisoryPayload, error) {
 	runtime, err := p.loadBackend()
 	if err != nil {
-		p.logFailure(packageinfo.BackendDNF, "initialization", err)
+		p.logFailure(p.configuredBackend(), "initialization", err)
 
 		return results.AdvisoryPayload{}, err
 	}
@@ -409,17 +471,26 @@ func (p *Plugin) collectAdvisories(ctx context.Context) (results.AdvisoryPayload
 }
 
 func (p *Plugin) loadBackend() (backendRuntime, error) {
-	p.backendOnce.Do(func() {
-		if p.factory == nil {
-			p.backendErr = errBackendFactory
+	p.backendMu.Lock()
+	defer p.backendMu.Unlock()
 
-			return
-		}
+	if !p.backendReady {
+		p.backendReady = true
+		p.buildBackendLocked()
+	}
 
-		p.backend, p.backendErr = p.factory()
-		if p.backendErr != nil {
-			return
-		}
+	return p.backend, p.backendErr
+}
+
+func (p *Plugin) buildBackendLocked() {
+	if p.factory == nil {
+		p.backendErr = errBackendFactory
+
+		return
+	}
+
+	p.backend, p.backendErr = p.factory()
+	if p.backendErr == nil {
 		switch {
 		case p.backend.Backend == packageinfo.BackendDNF &&
 			(p.backend.Packages == nil || p.backend.Advisories == nil):
@@ -433,9 +504,7 @@ func (p *Plugin) loadBackend() (backendRuntime, error) {
 			p.backend = backendRuntime{}
 			p.backendErr = errors.New("backend factory returned an incomplete runtime")
 		}
-	})
-
-	return p.backend, p.backendErr
+	}
 }
 
 func (p *Plugin) logFailure(backend packageinfo.Backend, stage string, err error) {
@@ -458,6 +527,9 @@ func (p *Plugin) logFailure(backend packageinfo.Backend, stage string, err error
 			"timed_out", commandFailure.IsTimeout(),
 			"canceled", commandFailure.IsCanceled(),
 		)
+		if diagnostic := commandFailure.Diagnostic(); diagnostic != "" {
+			args = append(args, "diagnostic", diagnostic)
+		}
 	}
 
 	p.logger.Error(

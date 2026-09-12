@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/obviousaichicken/zabbix-agent2-plugin-package-updates/internal/command"
@@ -37,16 +38,23 @@ type PackageData struct {
 	Repositories []packageinfo.Repository
 	Updates      []packageinfo.Update
 	Metadata     packageinfo.Metadata
+
+	// Installed is the package set enumerated for this collection. Reboot
+	// detection reuses it instead of running dpkg-query a second time.
+	Installed []InstalledPackage
 }
 
 // Client runs bounded, read-only APT package collection.
 type Client struct {
-	runner       Runner
-	paths        CommandPaths
-	stat         func(string) (fs.FileInfo, error)
-	now          func() time.Time
-	rebootMarker string
-	history      *HistoryReader
+	runner         Runner
+	paths          CommandPaths
+	stat           func(string) (fs.FileInfo, error)
+	readFile       func(string) ([]byte, error)
+	now            func() time.Time
+	policyBudget   int
+	rebootMarker   string
+	refreshSignals []string
+	history        *HistoryReader
 }
 
 var _ interface {
@@ -82,7 +90,7 @@ func New(runner Runner) (*Client, error) {
 
 // NewAtPaths constructs an APT client from already-resolved executables.
 func NewAtPaths(runner Runner, paths CommandPaths) (*Client, error) {
-	return newClient(runner, paths, os.Stat, time.Now)
+	return newClient(runner, paths, os.Stat, os.ReadFile, time.Now)
 }
 
 func newClientForTest(
@@ -91,13 +99,14 @@ func newClientForTest(
 	stat func(string) (fs.FileInfo, error),
 	now func() time.Time,
 ) (*Client, error) {
-	return newClient(runner, paths, stat, now)
+	return newClient(runner, paths, stat, os.ReadFile, now)
 }
 
 func newClient(
 	runner Runner,
 	paths CommandPaths,
 	stat func(string) (fs.FileInfo, error),
+	readFile func(string) ([]byte, error),
 	now func() time.Time,
 ) (*Client, error) {
 	if runner == nil {
@@ -119,6 +128,9 @@ func newClient(
 	if stat == nil {
 		return nil, errors.New("filesystem stat function is required")
 	}
+	if readFile == nil {
+		return nil, errors.New("filesystem read function is required")
+	}
 	if now == nil {
 		return nil, errors.New("clock function is required")
 	}
@@ -129,38 +141,67 @@ func newClient(
 	}
 
 	return &Client{
-		runner:       runner,
-		paths:        paths,
-		stat:         stat,
-		now:          now,
-		rebootMarker: defaultRebootMarker,
-		history:      history,
+		runner:   runner,
+		paths:    paths,
+		stat:     stat,
+		readFile: readFile,
+		now:      now,
+		policyBudget: policyArgumentBudget(
+			execArgumentLimit(),
+			environmentBytes(os.Environ()),
+			[]string{paths.APTCache, "policy"},
+		),
+		rebootMarker:   defaultRebootMarker,
+		refreshSignals: defaultRefreshSignals(),
+		history:        history,
 	}, nil
 }
 
-func newClientWithSystemForTest(
-	runner Runner,
-	paths CommandPaths,
-	stat func(string) (fs.FileInfo, error),
-	now func() time.Time,
-	historyFileSystem historyFileSystem,
-	historyDirectory string,
-	rebootMarker string,
-	location *time.Location,
-) (*Client, error) {
-	client, err := newClient(runner, paths, stat, now)
+// testSystem replaces every host path and dependency the APT client touches so
+// tests never reach the real filesystem.
+type testSystem struct {
+	runner            Runner
+	paths             CommandPaths
+	stat              func(string) (fs.FileInfo, error)
+	readFile          func(string) ([]byte, error)
+	now               func() time.Time
+	historyFileSystem historyFileSystem
+	historyDirectory  string
+	rebootMarker      string
+	refreshSignals    []string
+	policyBudget      int
+	location          *time.Location
+}
+
+func newClientWithSystemForTest(system testSystem) (*Client, error) {
+	readFile := system.readFile
+	if readFile == nil {
+		readFile = func(string) ([]byte, error) { return []byte("6.1.0-28-amd64\n"), nil }
+	}
+	client, err := newClient(system.runner, system.paths, system.stat, readFile, system.now)
 	if err != nil {
 		return nil, err
 	}
-	history, err := newHistoryReaderForTest(historyFileSystem, historyDirectory, location)
+	history, err := newHistoryReaderForTest(
+		system.historyFileSystem,
+		system.historyDirectory,
+		system.location,
+	)
 	if err != nil {
 		return nil, err
 	}
-	if rebootMarker == "" {
+	if system.rebootMarker == "" {
 		return nil, errors.New("reboot marker path is required")
 	}
+	if len(system.refreshSignals) == 0 {
+		return nil, errors.New("at least one refresh signal path is required")
+	}
 	client.history = history
-	client.rebootMarker = rebootMarker
+	client.rebootMarker = system.rebootMarker
+	client.refreshSignals = append([]string(nil), system.refreshSignals...)
+	if system.policyBudget != 0 {
+		client.policyBudget = system.policyBudget
+	}
 
 	return client, nil
 }
@@ -171,13 +212,17 @@ func (client *Client) Collect(ctx context.Context) (packageinfo.Snapshot, error)
 	if err != nil {
 		return packageinfo.Snapshot{}, fmt.Errorf("collect APT packages: %w", err)
 	}
-	rebootPending, err := client.RebootPending(ctx)
+	rebootPending, err := client.RebootPending(ctx, data.Installed)
 	if err != nil {
 		return packageinfo.Snapshot{}, fmt.Errorf("collect APT reboot status: %w", err)
 	}
-	lastUpdate, err := client.LastUpdate(ctx)
+	lastUpdate, historyWarning, err := client.LastUpdate(ctx)
 	if err != nil {
 		return packageinfo.Snapshot{}, fmt.Errorf("collect APT update history: %w", err)
+	}
+	var warnings []string
+	if historyWarning != "" {
+		warnings = append(warnings, "APT update history unavailable: "+historyWarning)
 	}
 
 	return packageinfo.Snapshot{
@@ -190,21 +235,29 @@ func (client *Client) Collect(ctx context.Context) (packageinfo.Snapshot, error)
 				Other:       packageinfo.CapabilitySupported,
 			},
 			RepositoryAttribution: packageinfo.CapabilitySupported,
-			RebootDetection:       packageinfo.CapabilitySupported,
-			LastUpdate:            packageinfo.CapabilityBestEffort,
-			MetadataAge:           packageinfo.CapabilitySupported,
+			// Library-only reboots are invisible without
+			// /run/reboot-required, whose writers are optional packages.
+			RebootDetection: packageinfo.CapabilityBestEffort,
+			LastUpdate:      packageinfo.CapabilityBestEffort,
+			MetadataAge:     packageinfo.CapabilitySupported,
 		},
 		Metadata:      data.Metadata,
 		Repositories:  data.Repositories,
 		Updates:       data.Updates,
 		RebootPending: rebootPending,
 		LastUpdate:    lastUpdate,
+		Warnings:      warnings,
 	}, nil
 }
 
 // Packages collects enabled repositories, exact candidate policies, pending
-// updates, and the age of the oldest participating index.
+// updates, and how long ago APT last refreshed this host's indexes.
 func (client *Client) Packages(ctx context.Context) (PackageData, error) {
+	nativeArchitecture, err := client.nativeArchitecture(ctx)
+	if err != nil {
+		return PackageData{}, err
+	}
+
 	indexResult, err := client.run(
 		ctx,
 		"apt-get indextargets",
@@ -219,7 +272,11 @@ func (client *Client) Packages(ctx context.Context) (PackageData, error) {
 	if err != nil {
 		return PackageData{}, err
 	}
-	metadata, err := client.indexMetadata(ctx, indexes.Targets)
+	err = client.validateIndexTargets(ctx, indexes.Targets)
+	if err != nil {
+		return PackageData{}, fmt.Errorf("validate APT package indexes: %w", err)
+	}
+	metadata, err := client.refreshMetadata(ctx)
 	if err != nil {
 		return PackageData{}, fmt.Errorf("collect APT index metadata: %w", err)
 	}
@@ -239,11 +296,11 @@ func (client *Client) Packages(ctx context.Context) (PackageData, error) {
 		return PackageData{}, err
 	}
 
-	policies, err := client.packagePolicies(ctx, installed, indexes)
+	policies, err := client.packagePolicies(ctx, installed, indexes, nativeArchitecture)
 	if err != nil {
 		return PackageData{}, err
 	}
-	updates, err := client.pendingUpdates(ctx, installed, policies)
+	updates, err := client.pendingUpdates(ctx, policies)
 	if err != nil {
 		return PackageData{}, err
 	}
@@ -252,15 +309,43 @@ func (client *Client) Packages(ctx context.Context) (PackageData, error) {
 		Repositories: indexes.Repositories,
 		Updates:      updates,
 		Metadata:     metadata,
+		Installed:    installed,
 	}, nil
+}
+
+// nativeArchitecture reports dpkg's native architecture, which apt-cache
+// policy needs to resolve unqualified package headers back to the packages
+// that were requested.
+func (client *Client) nativeArchitecture(ctx context.Context) (string, error) {
+	result, err := client.run(
+		ctx,
+		"dpkg print native architecture",
+		client.paths.DPKG,
+		[]string{"--print-architecture"},
+		nil,
+	)
+	if err != nil {
+		return "", fmt.Errorf("read dpkg native architecture: %w", err)
+	}
+
+	architecture := strings.TrimSpace(string(result.Stdout))
+	if !validArchitecture(architecture) {
+		return "", errors.New("dpkg reported an invalid native architecture")
+	}
+
+	return architecture, nil
 }
 
 func (client *Client) packagePolicies(
 	ctx context.Context,
 	installed []InstalledPackage,
 	indexes RepositoryIndexes,
+	nativeArchitecture string,
 ) ([]PackagePolicy, error) {
-	argumentBatches, err := BatchPolicyArguments(installed)
+	// Every batch is another apt-cache process that reloads the whole APT
+	// cache, so the budget fits as many packages into one invocation as the
+	// host's exec limit safely allows.
+	argumentBatches, err := BatchPolicyArguments(installed, client.policyBudget)
 	if err != nil {
 		return nil, err
 	}
@@ -281,8 +366,14 @@ func (client *Client) packagePolicies(
 			return nil, fmt.Errorf("query APT package policy: %w", runErr)
 		}
 
-		requested := installed[offset : offset+len(arguments)]
-		batchPolicies, parseErr := ParsePackagePolicies(result.Stdout, requested, indexes)
+		batchPolicies, parseErr := ParsePackagePolicies(
+			result.Stdout,
+			PolicyRequest{
+				Packages:           installed[offset : offset+len(arguments)],
+				NativeArchitecture: nativeArchitecture,
+			},
+			indexes,
+		)
 		if parseErr != nil {
 			return nil, parseErr
 		}
@@ -304,39 +395,43 @@ func (client *Client) packagePolicies(
 	return policies, nil
 }
 
+// pendingUpdates derives updates from apt-cache policy alone.
+//
+// dpkg's database is live, so the installed set enumerated by dpkg-query and
+// the policies queried a moment later are two reads of moving state. Comparing
+// them and failing on any difference turned a routine unattended-upgrades run
+// into a failed check, because collection overlapping a package transaction is
+// normal rather than exceptional.
+//
+// Both versions therefore come from the same apt-cache policy block: apt reads
+// /var/lib/dpkg/status itself, so its Installed and Candidate lines are a
+// coherent pair by construction and need no cross-check. dpkg-query is reduced
+// to choosing which packages to ask about, which makes a package changing
+// mid-collection an ordinary snapshot boundary: it is reported as it was seen,
+// or omitted, and the next collection picks it up.
 func (client *Client) pendingUpdates(
 	ctx context.Context,
-	installed []InstalledPackage,
 	policies []PackagePolicy,
 ) ([]packageinfo.Update, error) {
-	installedByKey := make(map[string]InstalledPackage, len(installed))
-	for _, pkg := range installed {
-		installedByKey[packageKey(pkg.Name, pkg.Architecture)] = pkg
-	}
-	if len(policies) != len(installedByKey) {
-		return nil, errors.New("APT policy count does not match installed-package count")
-	}
-
 	updates := make([]packageinfo.Update, 0)
 	seen := make(map[string]struct{}, len(policies))
 	for _, policy := range policies {
 		key := packageKey(policy.Name, policy.Architecture)
-		pkg, exists := installedByKey[key]
-		if !exists {
-			return nil, errors.New("APT policy references an unknown installed package")
-		}
 		if _, duplicate := seen[key]; duplicate {
 			return nil, errors.New("APT policy contains a duplicate package")
 		}
 		seen[key] = struct{}{}
-		if policy.Installed == nil || policy.Installed.Full != pkg.Version.Full {
-			return nil, fmt.Errorf("package state changed while collecting %s:%s", pkg.Name, pkg.Architecture)
+
+		// Removed between enumeration and the policy query. A package that
+		// is not installed has no pending update.
+		if policy.Installed == nil {
+			continue
 		}
-		if policy.Candidate == nil || policy.Candidate.Full == pkg.Version.Full {
+		if policy.Candidate == nil || policy.Candidate.Full == policy.Installed.Full {
 			continue
 		}
 
-		newer, err := client.candidateIsNewer(ctx, pkg, *policy.Candidate)
+		newer, err := client.candidateIsNewer(ctx, policy, *policy.Candidate)
 		if err != nil {
 			return nil, err
 		}
@@ -345,7 +440,12 @@ func (client *Client) pendingUpdates(
 		}
 		source, err := preferredCandidateSource(policy.CandidateSources)
 		if err != nil {
-			return nil, fmt.Errorf("select candidate source for %s:%s: %w", pkg.Name, pkg.Architecture, err)
+			return nil, fmt.Errorf(
+				"select candidate source for %s:%s: %w",
+				policy.Name,
+				policy.Architecture,
+				err,
+			)
 		}
 
 		updateType := packageinfo.UpdateTypeOther
@@ -353,11 +453,11 @@ func (client *Client) pendingUpdates(
 			updateType = packageinfo.UpdateTypeSecurity
 		}
 		update := packageinfo.Update{
-			Name:         pkg.Name,
+			Name:         policy.Name,
 			Epoch:        policy.Candidate.Epoch,
 			Version:      policy.Candidate.Version,
 			Release:      policy.Candidate.Release,
-			Arch:         pkg.Architecture,
+			Arch:         policy.Architecture,
 			RepositoryID: source.RepositoryID,
 			Type:         updateType,
 		}
@@ -381,18 +481,23 @@ func (client *Client) pendingUpdates(
 
 func (client *Client) candidateIsNewer(
 	ctx context.Context,
-	pkg InstalledPackage,
+	policy PackagePolicy,
 	candidate DebianVersion,
 ) (bool, error) {
 	result, err := client.run(
 		ctx,
 		"dpkg compare package versions",
 		client.paths.DPKG,
-		[]string{"--compare-versions", candidate.Full, "gt", pkg.Version.Full},
+		[]string{"--compare-versions", candidate.Full, "gt", policy.Installed.Full},
 		[]int{1},
 	)
 	if err != nil {
-		return false, fmt.Errorf("compare package versions for %s:%s: %w", pkg.Name, pkg.Architecture, err)
+		return false, fmt.Errorf(
+			"compare package versions for %s:%s: %w",
+			policy.Name,
+			policy.Architecture,
+			err,
+		)
 	}
 	switch result.ExitCode {
 	case 0:
@@ -439,51 +544,30 @@ func winningCandidateIsSecurity(sources []PolicySource) bool {
 	return false
 }
 
-func (client *Client) indexMetadata(ctx context.Context, targets []IndexTarget) (packageinfo.Metadata, error) {
-	if len(targets) == 0 {
-		return packageinfo.Metadata{}, errors.New("no enabled APT binary package indexes")
+// commandEnvironment is the environment every APT command runs with. The
+// runner merges it over the inherited environment, so both contribute to the
+// exec argument budget.
+func commandEnvironment() map[string]string {
+	return map[string]string{
+		"LC_ALL": "C",
+		"LANG":   "C",
+	}
+}
+
+// environmentBytes estimates what the child process environment costs against
+// the same exec limit as the argument list.
+func environmentBytes(inherited []string) int {
+	total := 0
+	for _, entry := range inherited {
+		total += len(entry) + 1 + execArgumentPointerBytes
+	}
+	for name, value := range commandEnvironment() {
+		// Overrides may replace an inherited entry rather than add one, so
+		// counting them again only ever overestimates the cost.
+		total += len(name) + len(value) + 2 + execArgumentPointerBytes
 	}
 
-	var oldest time.Time
-	seen := make(map[string]struct{}, len(targets))
-	for targetIndex, target := range targets {
-		if err := ctx.Err(); err != nil {
-			return packageinfo.Metadata{}, err
-		}
-		if _, duplicate := seen[target.Filename]; duplicate {
-			continue
-		}
-		seen[target.Filename] = struct{}{}
-
-		info, err := client.stat(target.Filename)
-		if err != nil {
-			return packageinfo.Metadata{}, &indexStatError{index: targetIndex + 1, err: err}
-		}
-		if info == nil {
-			return packageinfo.Metadata{}, fmt.Errorf("APT package index %d returned no file metadata", targetIndex+1)
-		}
-		if !info.Mode().IsRegular() {
-			return packageinfo.Metadata{}, fmt.Errorf("APT package index %d is not a regular file", targetIndex+1)
-		}
-		modified := info.ModTime().UTC()
-		if modified.IsZero() {
-			return packageinfo.Metadata{}, fmt.Errorf("APT package index %d has no modification time", targetIndex+1)
-		}
-		if oldest.IsZero() || modified.Before(oldest) {
-			oldest = modified
-		}
-	}
-	if oldest.IsZero() {
-		return packageinfo.Metadata{}, errors.New("no unique APT package indexes participated")
-	}
-
-	now := client.now().UTC()
-	age := int64(0)
-	if now.After(oldest) {
-		age = int64(now.Sub(oldest) / time.Second)
-	}
-
-	return packageinfo.Metadata{RefreshedAt: &oldest, AgeSeconds: &age}, nil
+	return total
 }
 
 func (client *Client) run(
@@ -497,31 +581,16 @@ func (client *Client) run(
 		Name:              path,
 		Args:              args,
 		AcceptedExitCodes: acceptedExitCodes,
-		Env: map[string]string{
-			"LC_ALL": "C",
-			"LANG":   "C",
-		},
+		Env:               commandEnvironment(),
 	})
 	if err != nil {
 		return result, &CommandError{
 			operation:  operation,
 			exitStatus: result.ExitCode,
+			diagnostic: command.Diagnostic(result.Stderr),
 			err:        err,
 		}
 	}
 
 	return result, nil
-}
-
-type indexStatError struct {
-	index int
-	err   error
-}
-
-func (err *indexStatError) Error() string {
-	return fmt.Sprintf("failed to stat APT package index %d", err.index)
-}
-
-func (err *indexStatError) Unwrap() error {
-	return err.err
 }

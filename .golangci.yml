@@ -1,0 +1,72 @@
+# Every linter named by a //nolint directive in this repository is enabled
+# here. A directive naming a linter that never runs is not a waiver: it is
+# dead text that hides whatever it claims to suppress, and nolintlint is
+# enabled to keep it that way.
+#
+# Thresholds are set where the code stands today rather than at the tool
+# defaults. Adopting a linter on an existing codebase is only useful if it
+# can run: a gate that is red on arrival gets disabled. These hold the line
+# against regressions, and can be tightened as functions are split.
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - cyclop
+    - funlen
+    - gosec
+    - ireturn
+    - paralleltest
+    - tagliatelle
+    - testpackage
+    - nolintlint
+  settings:
+    cyclop:
+      # Set at the highest non-waived function today (repositoryTarget, 17),
+      # so anything more tangled than what already exists is rejected. It was
+      # 19 until validatePackageSnapshot, validateBackendCapabilities and the
+      # repository grouping were split apart.
+      max-complexity: 17
+    funlen:
+      # Set at today's highest non-waived function on each dimension, with no
+      # slack, so anything longer than what already exists is rejected. Was
+      # 80/80; the statement limit in particular was well above reality.
+      lines: 75
+      statements: 45
+    tagliatelle:
+      # This project's published payload is snake_case; that is the schema,
+      # not a deviation from a camelCase default.
+      case:
+        rules:
+          json: snake
+    ireturn:
+      allow:
+        - error
+        - empty
+        - stdlib
+        - generic
+    nolintlint:
+      allow-unused: false
+      require-explanation: true
+      require-specific: true
+  exclusions:
+    presets:
+      - common-false-positives
+      - std-error-handling
+    rules:
+      # Table-driven subtests are legitimately long; the size limits target
+      # production functions. Every other test-only waiver stays an explicit
+      # //nolint directive so each one has to say why.
+      - path: _test\.go
+        linters:
+          - funlen
+          - cyclop
+      # These structs decode DNF5's own JSON, whose field names are fixed by
+      # dnf5 and are not this project's schema to rename.
+      - path: internal/dnf/advisory_dnf5\.go
+        linters:
+          - tagliatelle
+
+formatters:
+  enable:
+    - gofmt

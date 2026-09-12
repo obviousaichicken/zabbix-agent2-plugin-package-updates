@@ -8,11 +8,13 @@ import (
 	"github.com/obviousaichicken/zabbix-agent2-plugin-package-updates/internal/command"
 )
 
-// CommandError is a credential-safe APT command failure. It intentionally
-// omits stderr and raw arguments because repository URLs can contain userinfo.
+// CommandError is a credential-safe APT command failure. It omits raw
+// arguments and keeps only a redacted diagnostic line, because repository
+// URLs can contain userinfo.
 type CommandError struct {
 	operation  string
 	exitStatus int
+	diagnostic string
 	err        error
 }
 
@@ -31,6 +33,11 @@ func (failure *CommandError) Unwrap() error {
 // Operation returns a bounded command description without arguments.
 func (failure *CommandError) Operation() string {
 	return failure.operation
+}
+
+// Diagnostic returns the redacted reason the command failed.
+func (failure *CommandError) Diagnostic() string {
+	return failure.diagnostic
 }
 
 // Status returns the process exit status, or -1 when no process exited.

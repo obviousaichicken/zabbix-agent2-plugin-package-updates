@@ -216,9 +216,13 @@ func (client *Client) Collect(ctx context.Context) (packageinfo.Snapshot, error)
 	if err != nil {
 		return packageinfo.Snapshot{}, fmt.Errorf("collect APT reboot status: %w", err)
 	}
-	lastUpdate, err := client.LastUpdate(ctx)
+	lastUpdate, historyWarning, err := client.LastUpdate(ctx)
 	if err != nil {
 		return packageinfo.Snapshot{}, fmt.Errorf("collect APT update history: %w", err)
+	}
+	var warnings []string
+	if historyWarning != "" {
+		warnings = append(warnings, "APT update history unavailable: "+historyWarning)
 	}
 
 	return packageinfo.Snapshot{
@@ -242,6 +246,7 @@ func (client *Client) Collect(ctx context.Context) (packageinfo.Snapshot, error)
 		Updates:       data.Updates,
 		RebootPending: rebootPending,
 		LastUpdate:    lastUpdate,
+		Warnings:      warnings,
 	}, nil
 }
 
@@ -582,6 +587,7 @@ func (client *Client) run(
 		return result, &CommandError{
 			operation:  operation,
 			exitStatus: result.ExitCode,
+			diagnostic: command.Diagnostic(result.Stderr),
 			err:        err,
 		}
 	}

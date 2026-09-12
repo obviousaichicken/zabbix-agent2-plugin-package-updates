@@ -1,3 +1,4 @@
+//nolint:testpackage // White-box: batching and package parsing are unexported.
 package apt
 
 import (

@@ -1,3 +1,4 @@
+//nolint:testpackage // White-box: policy parsing internals are unexported.
 package apt
 
 import (
@@ -272,6 +273,7 @@ func TestParsePackagePoliciesFailsClosedOnCandidateSourceMismatch(t *testing.T) 
 func TestParsePackagePoliciesRedactsMatchingSourceCredentials(t *testing.T) {
 	t.Parallel()
 
+	//nolint:gosec // A fake credential URL is what this test redacts.
 	target := aptTargetRecord(targetRecordOptions{
 		descriptionURL: "https://index-user:index-secret@packages.example/debian",
 		repositoryURL:  "https://index-user:index-secret@packages.example/debian/",

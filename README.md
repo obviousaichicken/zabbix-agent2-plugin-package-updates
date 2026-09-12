@@ -129,7 +129,9 @@ Backend detection is automatic. Most installations do not need anything beyond t
 
 ### Backend selection
 
-The backend defaults to `auto`. The plugin reads `/etc/os-release`: Debian and Ubuntu families use APT, while Fedora and RHEL families use DNF. Startup fails if the distribution is unsupported or the required commands are missing. The installer also checks the distribution version against the support list above.
+The backend defaults to `auto`. The plugin reads `/etc/os-release`: it matches `ID` first and falls back to `ID_LIKE`, so Debian and Ubuntu derivatives are detected as APT and RHEL derivatives as DNF. Startup fails if the distribution is unsupported, if `ID_LIKE` names both families, or if the required commands are missing. The installer applies the same rule, and additionally checks the version against the support list above for the distributions named there.
+
+Changing `Plugins.PackageUpdates.Backend` takes effect on an agent configuration reload; a full restart is not required.
 
 You can force a backend when testing a controlled image:
 
@@ -173,6 +175,10 @@ sudo /usr/sbin/zabbix-agent2-plugin/zabbix-agent2-plugin-package-updates --test
 
 # Check for SELinux policy denials
 sudo ausearch -m AVC -ts recent
+
+# A failed check logs why. Agent 2 records the failing operation, its exit
+# status and a redacted first line of the command's stderr.
+sudo journalctl -u zabbix-agent2 | grep -i package-updates
 ```
 
 ## Upgrade
@@ -197,7 +203,7 @@ The package and advisory item keys are `packages.get` and `advisories.get`.
 * The plugin does not refresh package indexes or check mirror health.
 * `metadata.age_seconds` measures the last refresh run, not whether every repository was reachable during it. `apt-get update` exits successfully when some indexes fail and older copies are reused.
 * Bugfix and enhancement classifications are unavailable.
-* Package history is best effort because old APT logs may have been rotated away.
+* Package history is best effort because old APT logs may have been rotated away. A history log that cannot be read or parsed reports `not_recorded` and logs the reason rather than failing the check.
 * Reboot detection is best effort. A newer installed kernel is always detected; a library-only reboot is detected only where `/run/reboot-required` has a writer installed.
 * Collection is a point-in-time snapshot. A package installed, upgraded or removed while a check runs is reported as APT saw it, or omitted, and appears in the next collection.
 * APT does not provide the per-advisory monitoring available on DNF.

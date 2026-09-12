@@ -1,3 +1,4 @@
+//nolint:testpackage // White-box: DNF4 advisory parsing is unexported.
 package dnf
 
 import (

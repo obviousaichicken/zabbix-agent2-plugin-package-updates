@@ -18,10 +18,12 @@ check_agent_version() {
 	agent_version_output="$(zabbix_agent2 --version 2>&1)" ||
 		fail "cannot read Zabbix Agent 2 version"
 
+	# shellcheck disable=SC2086 # Splitting the version banner into fields is the point.
 	set -- $agent_version_output
 	agent_version="${3:-}"
 	previous_ifs=$IFS
 	IFS=.
+	# shellcheck disable=SC2086 # Splitting the dotted version into fields is the point.
 	set -- $agent_version
 	IFS=$previous_ifs
 
@@ -45,58 +47,107 @@ check_agent_version() {
 	esac
 }
 
+# Mirrors detectOSBackend in cmd/agent/backend.go: match ID first, then fall
+# back to ID_LIKE. Keeping only an ID list here made the installer refuse
+# hosts the plugin supports, such as Linux Mint, Pop!_OS and Raspbian, with
+# the misleading message "required command not found: dnf".
+detect_package_backend() {
+	backend_id="$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')"
+	backend_id_like="$(printf '%s' "${2:-}" | tr '[:upper:]' '[:lower:]')"
+
+	case "$backend_id" in
+	debian | ubuntu)
+		printf 'apt\n'
+		return 0
+		;;
+	fedora | rhel | centos | rocky | almalinux)
+		printf 'dnf\n'
+		return 0
+		;;
+	esac
+
+	apt_family=0
+	dnf_family=0
+	for family in $backend_id_like; do
+		case "$family" in
+		debian | ubuntu) apt_family=1 ;;
+		fedora | rhel | centos) dnf_family=1 ;;
+		esac
+	done
+
+	if [ "$apt_family" -eq 1 ] && [ "$dnf_family" -eq 1 ]; then
+		fail "ambiguous package-manager family for ID=\"$backend_id\" ID_LIKE=\"$backend_id_like\"; set Plugins.PackageUpdates.Backend explicitly"
+	fi
+	if [ "$apt_family" -eq 1 ]; then
+		printf 'apt\n'
+		return 0
+	fi
+	if [ "$dnf_family" -eq 1 ]; then
+		printf 'dnf\n'
+		return 0
+	fi
+
+	fail "unsupported operating-system package manager for ID=\"$backend_id\" ID_LIKE=\"$backend_id_like\""
+}
+
 check_operating_system() {
 	[ -r /etc/os-release ] || fail "cannot read /etc/os-release"
 
 	# shellcheck disable=SC1091 # The operating system provides this file.
 	. /etc/os-release
 	os_id="${ID:-}"
+	os_id_like="${ID_LIKE:-}"
 	os_version="${VERSION_ID:-}"
 
+	package_backend="$(detect_package_backend "$os_id" "$os_id_like")"
+
+	# Version support is only defined for the distributions named in the
+	# README. A derivative detected through ID_LIKE uses its own versioning,
+	# which cannot be checked against that list, so report that plainly
+	# instead of pretending the version was validated.
 	case "$os_id" in
 	debian)
 		case "$os_version" in
-		12 | 13)
-			package_backend=apt
-			return
-			;;
+		12 | 13) return ;;
 		*) fail "unsupported Debian version ${os_version:-unknown}; require Debian 12 or 13" ;;
 		esac
 		;;
 	ubuntu)
 		case "$os_version" in
-		22.04 | 24.04 | 26.04)
-			package_backend=apt
-			return
-			;;
+		22.04 | 24.04 | 26.04) return ;;
 		*) fail "unsupported Ubuntu version ${os_version:-unknown}; require Ubuntu 22.04, 24.04, or 26.04" ;;
 		esac
 		;;
-	esac
-
-	# Preserve the existing DNF-family version gate for all other IDs.
-	os_major="${os_version%%.*}"
-
-	case "$os_major" in
-	'' | *[!0-9]*)
-		fail "cannot parse operating system version: ${os_version:-unknown}"
+	fedora | rhel | centos | rocky | almalinux | ol)
+		os_major="${os_version%%.*}"
+		case "$os_major" in
+		'' | *[!0-9]*)
+			fail "cannot parse operating system version: ${os_version:-unknown}"
+			;;
+		esac
+		if [ "$os_major" -lt 8 ]; then
+			fail "unsupported operating system version $os_version; require a DNF-based version 8 or newer"
+		fi
+		return
 		;;
 	esac
 
-	if [ "$os_major" -lt 8 ]; then
-		fail "unsupported operating system version $os_version; require a DNF-based version 8 or newer"
-	fi
-
-	package_backend=dnf
+	printf 'Note: %s is not in the supported distribution list; continuing with the %s backend detected from ID_LIKE.\n' \
+		"${os_id:-unknown}" "$package_backend"
 }
 
 check_dnf_access() {
 	printf '%s\n' 'Checking DNF access...'
 	dnf_path="$(command -v dnf)"
-	run_as_zabbix "$dnf_path" --assumeyes -q repolist </dev/null >/dev/null ||
+	# These mirror internal/dnf: --assumeno, and the skip_if_unavailable
+	# override that makes an unreachable repository fail rather than be
+	# silently ignored. A softer preflight passed on hosts where collection
+	# then failed at runtime.
+	run_as_zabbix "$dnf_path" --assumeno -q repolist </dev/null >/dev/null ||
 		fail "the zabbix user cannot list DNF repositories"
-	run_as_zabbix "$dnf_path" --assumeyes -q repoquery --upgrades </dev/null >/dev/null ||
-		fail "the zabbix user cannot query DNF updates"
+	run_as_zabbix "$dnf_path" --assumeno -q '--setopt=*.skip_if_unavailable=False' \
+		repoquery --upgrades --latest-limit=1 </dev/null >/dev/null ||
+		fail "the zabbix user cannot query DNF updates; check that every enabled repository is reachable"
 }
 
 check_apt_access() {
@@ -115,10 +166,12 @@ check_apt_access() {
 		;;
 	esac
 
+	# shellcheck disable=SC2016 # ${...} here is dpkg's own format syntax.
 	run_as_zabbix "$dpkg_query_path" --show \
 		'--showformat=${binary:Package}|${Architecture}|${Version}|${db:Status-Status}\n' \
 		>/dev/null || fail "the zabbix user cannot query installed packages"
 
+	# shellcheck disable=SC2016 # ${...} here is dpkg's own format syntax.
 	policy_package="$(
 		run_as_zabbix "$dpkg_query_path" --show \
 			'--showformat=${Package}:${Architecture}\n' dpkg
@@ -128,6 +181,8 @@ check_apt_access() {
 		fail "the zabbix user cannot query APT package policy"
 	run_as_zabbix "$dpkg_path" --compare-versions 1 eq 1 ||
 		fail "the zabbix user cannot compare Debian package versions"
+	run_as_zabbix "$dpkg_path" --print-architecture >/dev/null ||
+		fail "the zabbix user cannot read the dpkg native architecture"
 }
 
 test_agent_item() {

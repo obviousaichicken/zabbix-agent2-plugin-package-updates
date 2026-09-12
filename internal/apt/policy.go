@@ -147,7 +147,7 @@ func ParsePackagePolicies(
 	return policies, nil
 }
 
-//nolint:cyclop // The state machine mirrors apt-cache policy's small indentation grammar.
+//nolint:cyclop,funlen // The state machine mirrors apt-cache policy's small indentation grammar.
 func parsePolicyBlocks(data []byte) ([]rawPolicyBlock, error) {
 	if len(data) > maxPolicyOutputBytes {
 		return nil, fmt.Errorf("policy output exceeds %d bytes", maxPolicyOutputBytes)
@@ -436,6 +436,7 @@ func policyTargets(indexes RepositoryIndexes) (map[string]IndexTarget, error) {
 	return targets, nil
 }
 
+//nolint:cyclop // Sequential validation of one policy block's invariants.
 func buildPackagePolicy(
 	block rawPolicyBlock,
 	pkg InstalledPackage,
@@ -480,7 +481,7 @@ func buildPackagePolicy(
 	}
 	candidateVersion, exists := versionsByFull[candidate.Full]
 	if !exists {
-		return PackagePolicy{}, errors.New("Candidate has no exact version-table entry")
+		return PackagePolicy{}, errors.New("the Candidate version has no exact version-table entry")
 	}
 	policy.CandidatePriority = candidateVersion.priority
 	if candidateVersion.phasedPercentage != nil {

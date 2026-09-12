@@ -189,6 +189,12 @@ type Snapshot struct {
 	Updates       []Update
 	RebootPending bool
 	LastUpdate    *LastUpdate
+
+	// Warnings records degradations that must not fail the collection but
+	// must not pass silently either, such as best-effort history that could
+	// not be read. They are logged by the plugin and never serialized, so
+	// adding one is not a payload schema change.
+	Warnings []string
 }
 
 // ValidateBasic rejects unknown enums and broken repository references.

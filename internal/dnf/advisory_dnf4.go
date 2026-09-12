@@ -100,6 +100,8 @@ type dnf4InfoRecord struct {
 // collector intentionally does not execute this command because it failed the
 // cross-version timing gate; this parser keeps the vendor format contract
 // explicit and fuzzable without adding a subprocess.
+//
+//nolint:cyclop,funlen // DNF4 info output is a loosely structured block format.
 func ParseDNF4AdvisoryInfo(data []byte) ([]Advisory, error) {
 	records := make(map[string]Advisory)
 	var current *dnf4InfoRecord

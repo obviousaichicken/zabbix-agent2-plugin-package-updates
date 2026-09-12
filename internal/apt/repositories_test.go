@@ -1,3 +1,4 @@
+//nolint:testpackage // White-box: the APT collector is an internal package tested through its unexported parsers.
 package apt
 
 import (
@@ -218,6 +219,7 @@ func TestParseRepositoryIndexesDetectsIDCollisions(t *testing.T) {
 func TestParseRepositoryIndexesRedactsCredentials(t *testing.T) {
 	t.Parallel()
 
+	//nolint:gosec // A fake credential URL is what this test redacts.
 	withCredentials := aptTargetRecord(targetRecordOptions{
 		descriptionURL: "https://alice:s3cr3t@packages.example/debian",
 		repositoryURL:  "https://alice:s3cr3t@packages.example/debian/",

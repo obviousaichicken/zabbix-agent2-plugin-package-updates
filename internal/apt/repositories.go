@@ -60,6 +60,8 @@ func ParseRepositoryIndexes(data []byte) (RepositoryIndexes, error) {
 }
 
 // Parse validates and normalizes enabled binary package index targets.
+//
+//nolint:funlen // Single pass building repositories, targets and identities.
 func (parser *RepositoryParser) Parse(data []byte) (RepositoryIndexes, error) {
 	if parser == nil || parser.repositoryID == nil {
 		return RepositoryIndexes{}, errors.New("APT repository parser is not configured")

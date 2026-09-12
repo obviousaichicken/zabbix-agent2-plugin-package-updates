@@ -1,3 +1,4 @@
+//nolint:testpackage // White-box: the DNF collector is an internal package tested through its unexported parsers.
 package dnf
 
 import (

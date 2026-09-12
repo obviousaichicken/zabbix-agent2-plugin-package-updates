@@ -748,6 +748,7 @@ func TestNewResolvesAPTCommands(t *testing.T) {
 	binDirectory := t.TempDir()
 	for _, name := range []string{"apt-get", "apt-cache", "dpkg-query", "dpkg"} {
 		path := filepath.Join(binDirectory, name)
+		//nolint:gosec // A stub the test then executes must be executable.
 		if err := os.WriteFile(path, []byte("#!/bin/sh\n"), 0o700); err != nil {
 			t.Fatalf("write %s: %v", name, err)
 		}
@@ -902,13 +903,4 @@ func cloneCommandRequest(request command.Request) command.Request {
 	}
 
 	return request
-}
-
-func requestArgumentLengths(requests []command.Request) []int {
-	lengths := make([]int, len(requests))
-	for index, request := range requests {
-		lengths[index] = len(request.Args)
-	}
-
-	return lengths
 }

@@ -1,3 +1,4 @@
+//nolint:testpackage // White-box: fixture contracts are checked against unexported parsers.
 package dnf
 
 import (

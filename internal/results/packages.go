@@ -13,7 +13,7 @@ const PackageSchemaVersion = 1
 
 // PackagePayload is the package-manager-neutral packages.get response.
 type PackagePayload struct {
-	SchemaVersion  int                 `json:"schema_version"` //nolint:tagliatelle // Public schema uses snake_case.
+	SchemaVersion  int                 `json:"schema_version"`
 	Backend        string              `json:"backend"`
 	Capabilities   PackageCapabilities `json:"capabilities"`
 	Metadata       PackageMetadata     `json:"metadata"`
@@ -27,10 +27,10 @@ type PackagePayload struct {
 // PackageCapabilities serializes generic backend fidelity.
 type PackageCapabilities struct {
 	Classification        PackageClassificationCapabilities `json:"classification"`
-	RepositoryAttribution string                            `json:"repository_attribution"` //nolint:tagliatelle // Public schema uses snake_case.
-	RebootDetection       string                            `json:"reboot_detection"`       //nolint:tagliatelle // Public schema uses snake_case.
-	LastUpdate            string                            `json:"last_update"`            //nolint:tagliatelle // Public schema uses snake_case.
-	MetadataAge           string                            `json:"metadata_age"`           //nolint:tagliatelle // Public schema uses snake_case.
+	RepositoryAttribution string                            `json:"repository_attribution"`
+	RebootDetection       string                            `json:"reboot_detection"`
+	LastUpdate            string                            `json:"last_update"`
+	MetadataAge           string                            `json:"metadata_age"`
 }
 
 // PackageClassificationCapabilities serializes classification fidelity.
@@ -43,26 +43,24 @@ type PackageClassificationCapabilities struct {
 
 // PackageMetadata describes the oldest participating package index.
 type PackageMetadata struct {
-	RefreshedAt *time.Time `json:"refreshed_at"` //nolint:tagliatelle // Public schema uses snake_case.
-	AgeSeconds  *int64     `json:"age_seconds"`  //nolint:tagliatelle // Public schema uses snake_case.
+	RefreshedAt *time.Time `json:"refreshed_at"`
+	AgeSeconds  *int64     `json:"age_seconds"`
 }
 
 // PackageUpdate contains generic update details.
 type PackageUpdate struct {
-	RepositoryID string `json:"repository_id"` //nolint:tagliatelle // Public schema uses snake_case.
+	RepositoryID string `json:"repository_id"`
 	Name         string `json:"name"`
 	Epoch        string `json:"epoch"`
 	Version      string `json:"version"`
 	Release      string `json:"release"`
 	Arch         string `json:"arch"`
 	Type         string `json:"type"`
-	FullVersion  string `json:"full_version"` //nolint:tagliatelle // Public schema uses snake_case.
+	FullVersion  string `json:"full_version"`
 	Identifier   string `json:"identifier"`
 }
 
 // BuildPackages validates and builds a deterministic packages.get payload.
-//
-//nolint:funlen,cyclop // Schema validation is intentionally centralized at this trust boundary.
 func BuildPackages(snapshot packageinfo.Snapshot) (PackagePayload, error) {
 	if err := validatePackageSnapshot(snapshot); err != nil {
 		return PackagePayload{}, err

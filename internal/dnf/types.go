@@ -47,8 +47,13 @@ const (
 type CommandError struct {
 	Command    string
 	ExitStatus int
-	Stderr     string
-	Err        error
+
+	// Diag is one bounded, credential-redacted line from stderr. DNF
+	// repository definitions may carry credentials in baseurl, so the raw
+	// stream is never retained.
+	Diag string
+
+	Err error
 }
 
 func (e *CommandError) Error() string {
@@ -70,6 +75,11 @@ func (e *CommandError) Unwrap() error {
 // Operation returns a bounded, safe DNF command description.
 func (e *CommandError) Operation() string {
 	return e.Command
+}
+
+// Diagnostic returns the redacted reason the command failed.
+func (e *CommandError) Diagnostic() string {
+	return e.Diag
 }
 
 // Status returns the process exit status, or -1 when no process exited.

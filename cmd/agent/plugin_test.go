@@ -44,7 +44,7 @@ func (timeoutProvider) ItemID() uint64 {
 	return 0
 }
 
-func (timeoutProvider) Output() plugin.ResultWriter { //nolint:ireturn
+func (timeoutProvider) Output() plugin.ResultWriter { //nolint:ireturn // Satisfies plugin.ContextProvider, which returns interfaces.
 	return nil
 }
 
@@ -52,7 +52,7 @@ func (timeoutProvider) Meta() *plugin.Meta {
 	return nil
 }
 
-func (timeoutProvider) GlobalRegexp() plugin.RegexpMatcher { //nolint:ireturn
+func (timeoutProvider) GlobalRegexp() plugin.RegexpMatcher { //nolint:ireturn // Satisfies plugin.ContextProvider, which returns interfaces.
 	return nil
 }
 
@@ -656,6 +656,7 @@ func pluginDNFSnapshot() packageinfo.Snapshot {
 	}
 }
 
+//nolint:ireturn // Returns the collaborator interface the plugin consumes.
 func successfulAdvisoryCollector() advisoryCollector {
 	return advisoryCollectorFunc(func(context.Context) (dnf.AdvisoryData, error) {
 		return pluginAdvisoryData(), nil
@@ -721,7 +722,7 @@ func pluginAPTSnapshot() packageinfo.Snapshot {
 	}
 }
 
-func TestLogFailureDoesNotLogDNFStderr(t *testing.T) {
+func TestLogFailureLogsRedactedDiagnostic(t *testing.T) {
 	t.Parallel()
 
 	var output bytes.Buffer
@@ -732,22 +733,131 @@ func TestLogFailureDoesNotLogDNFStderr(t *testing.T) {
 	p.logFailure(packageinfo.BackendDNF, "updates", &dnf.CommandError{
 		Command:    "/usr/bin/dnf repoquery",
 		ExitStatus: 1,
-		Stderr:     "raw stderr marker",
+		Diag:       command.Diagnostic([]byte("Error: Failed to download metadata for repo 'private'")),
 		Err:        context.Canceled,
 	})
 
-	if strings.Contains(output.String(), "raw stderr marker") {
-		t.Fatalf("log contains raw command stderr: %s", output.String())
-	}
 	for _, field := range []string{
 		`"backend":"dnf"`,
 		`"stage":"updates"`,
 		`"operation":"/usr/bin/dnf repoquery"`,
 		`"exit_status":1`,
 		`"canceled":true`,
+		`Failed to download metadata`,
 	} {
 		if !strings.Contains(output.String(), field) {
 			t.Fatalf("structured log does not contain %s: %s", field, output.String())
 		}
+	}
+}
+
+// The diagnostic is the only stderr-derived value that reaches the log, so it
+// must never carry repository credentials.
+func TestLogFailureDiagnosticRedactsCredentials(t *testing.T) {
+	t.Parallel()
+
+	var output bytes.Buffer
+
+	p := new(Plugin)
+	p.logger = slog.New(slog.NewJSONHandler(&output, nil))
+
+	p.logFailure(packageinfo.BackendDNF, "updates", &dnf.CommandError{
+		Command:    "/usr/bin/dnf repoquery",
+		ExitStatus: 1,
+		Diag: command.Diagnostic([]byte(
+			"Error: failed for https://alice:s3cr3t@packages.example/debian?token=deadbeef",
+		)),
+		Err: context.Canceled,
+	})
+
+	for _, secret := range []string{"s3cr3t", "alice", "deadbeef", "token="} {
+		if strings.Contains(output.String(), secret) {
+			t.Fatalf("log leaked %q: %s", secret, output.String())
+		}
+	}
+	if !strings.Contains(output.String(), "packages.example") {
+		t.Fatalf("redaction removed the useful host: %s", output.String())
+	}
+}
+
+// A runtime configuration reload calls Configure again. A changed backend
+// selection must take effect without restarting the agent.
+func TestPluginConfigureRebuildsBackendWhenSelectionChanges(t *testing.T) {
+	t.Parallel()
+
+	var calls atomic.Int64
+	p := new(Plugin)
+	p.factory = func() (backendRuntime, error) {
+		calls.Add(1)
+
+		return backendRuntime{
+			Backend:  packageinfo.BackendAPT,
+			Packages: packageCollectorFunc(func(context.Context) (packageinfo.Snapshot, error) { return pluginAPTSnapshot(), nil }),
+		}, nil
+	}
+
+	p.Configure(nil, map[string]any{"Backend": "apt"})
+	if _, err := p.loadBackend(); err != nil {
+		t.Fatalf("loadBackend() error = %v", err)
+	}
+	if _, err := p.loadBackend(); err != nil {
+		t.Fatalf("loadBackend() error = %v", err)
+	}
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("factory calls = %d, want 1 while configuration is unchanged", got)
+	}
+
+	// Same selection again: the cached backend must be kept.
+	p.Configure(nil, map[string]any{"Backend": "apt"})
+	if _, err := p.loadBackend(); err != nil {
+		t.Fatalf("loadBackend() error = %v", err)
+	}
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("factory calls = %d, want 1 for an unchanged reload", got)
+	}
+
+	// Changed selection: the backend must be rebuilt.
+	p.Configure(nil, map[string]any{"Backend": "dnf"})
+	if _, err := p.loadBackend(); err != nil {
+		t.Fatalf("loadBackend() error = %v", err)
+	}
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("factory calls = %d, want 2 after the selection changed", got)
+	}
+}
+
+func TestPluginLogsConfiguredBackendWhenInitializationFails(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		options any
+		want    string
+	}{
+		{name: "explicit apt", options: map[string]any{"Backend": "apt"}, want: `"backend":"apt"`},
+		{name: "explicit dnf", options: map[string]any{"Backend": "dnf"}, want: `"backend":"dnf"`},
+		{name: "auto detection", options: nil, want: `"backend":"unknown"`},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			var output bytes.Buffer
+			p := new(Plugin)
+			p.logger = slog.New(slog.NewJSONHandler(&output, nil))
+			p.factory = func() (backendRuntime, error) {
+				return backendRuntime{}, errors.New("initialization exploded")
+			}
+			p.Configure(nil, test.options)
+
+			if _, err := p.collectPackages(context.Background()); err == nil {
+				t.Fatal("collectPackages() succeeded, want initialization failure")
+			}
+			if !strings.Contains(output.String(), test.want) {
+				t.Fatalf("log = %s, want %s", output.String(), test.want)
+			}
+		})
 	}
 }

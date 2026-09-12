@@ -1,3 +1,4 @@
+//nolint:testpackage // White-box: collection stages are assembled from unexported client internals.
 package apt
 
 import (

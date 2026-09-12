@@ -18,7 +18,7 @@ const (
 )
 
 var (
-	errInvalidBackendOption = errors.New("Backend must be one of auto, dnf, or apt")
+	errInvalidBackendOption = errors.New("the Backend option must be one of auto, dnf, or apt")
 	errAmbiguousBackend     = errors.New("ambiguous package-manager family")
 	errUnsupportedBackend   = errors.New("unsupported operating-system package manager")
 )
@@ -76,15 +76,16 @@ func parseBackendOption(privateOptions any) (string, error) {
 
 	backend, ok := value.(string)
 	if !ok {
-		return "", fmt.Errorf("Backend has type %T: %w", value, errInvalidBackendOption)
+		return "", fmt.Errorf("the Backend option has type %T: %w", value, errInvalidBackendOption)
 	}
 	if backend != backendAuto && backend != backendDNF && backend != backendAPT {
-		return "", fmt.Errorf("Backend %q is invalid: %w", backend, errInvalidBackendOption)
+		return "", fmt.Errorf("the Backend option %q is invalid: %w", backend, errInvalidBackendOption)
 	}
 
 	return backend, nil
 }
 
+//nolint:cyclop // One flat pass over Agent 2's private option tree shape.
 func parsePrivateOptionTree(root map[string]any) (string, error) {
 	name, ok := root["Name"].(string)
 	if !ok || name != pluginName {
@@ -115,7 +116,7 @@ func parsePrivateOptionTree(root map[string]any) (string, error) {
 		switch optionName {
 		case "Backend":
 			if option != nil {
-				return "", errors.New("Backend private plugin option is duplicated")
+				return "", errors.New("the Backend private plugin option is duplicated")
 			}
 			option = node
 		case "System":
@@ -132,19 +133,19 @@ func parsePrivateOptionTree(root map[string]any) (string, error) {
 
 	valueNodes, ok := option["Nodes"].([]any)
 	if !ok || len(valueNodes) != 1 {
-		return "", errors.New("Backend private plugin option must contain one value")
+		return "", errors.New("the Backend private plugin option must contain one value")
 	}
 	valueNode, ok := valueNodes[0].(map[string]any)
 	if !ok {
-		return "", errors.New("Backend private plugin option value is not an object")
+		return "", errors.New("the Backend private plugin option value is not an object")
 	}
 	encoded, ok := valueNode["Value"].(string)
 	if !ok {
-		return "", errors.New("Backend private plugin option value is missing")
+		return "", errors.New("the Backend private plugin option value is missing")
 	}
 	decoded, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil || !utf8.Valid(decoded) {
-		return "", errors.New("Backend private plugin option value is not valid base64 UTF-8")
+		return "", errors.New("the Backend private plugin option value is not valid base64 UTF-8")
 	}
 
 	return string(decoded), nil

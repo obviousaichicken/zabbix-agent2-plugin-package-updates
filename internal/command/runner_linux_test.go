@@ -175,7 +175,6 @@ func TestRunnerDescendantHelper(_ *testing.T) {
 		os.Exit(2)
 	}
 
-	//nolint:gosec // this test intentionally starts the current test executable.
 	cmd := exec.Command(executable, "-test.run=^TestRunnerBlockingHelper$")
 	cmd.Env = append(os.Environ(), helperProcessBlockEnv+"=1")
 	cmd.Stdout = os.Stdout
@@ -190,6 +189,7 @@ func TestRunnerDescendantHelper(_ *testing.T) {
 	}
 
 	pid := strconv.Itoa(cmd.Process.Pid)
+	//nolint:gosec // The helper writes to the PID path this test itself set.
 	err = os.WriteFile(os.Getenv(helperProcessPIDFileEnv), []byte(pid), 0o600)
 	if err != nil {
 		_ = cmd.Process.Kill()

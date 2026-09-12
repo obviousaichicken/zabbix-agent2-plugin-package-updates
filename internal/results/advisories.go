@@ -27,7 +27,7 @@ var (
 
 // AdvisoryPayload is the compact advisories.get response.
 type AdvisoryPayload struct {
-	SchemaVersion int                `json:"schema_version"` //nolint:tagliatelle // Public schema uses snake_case.
+	SchemaVersion int                `json:"schema_version"`
 	Collection    AdvisoryCollection `json:"collection"`
 	Metadata      AdvisoryMetadata   `json:"metadata"`
 	Summary       AdvisorySummary    `json:"summary"`
@@ -37,26 +37,26 @@ type AdvisoryPayload struct {
 // AdvisoryCollection records successful collection timing.
 type AdvisoryCollection struct {
 	Complete    bool      `json:"complete"`
-	DurationMS  int64     `json:"duration_ms"`  //nolint:tagliatelle // Public schema uses snake_case.
-	CollectedAt time.Time `json:"collected_at"` //nolint:tagliatelle // Public schema uses snake_case.
+	DurationMS  int64     `json:"duration_ms"`
+	CollectedAt time.Time `json:"collected_at"`
 }
 
 // AdvisoryMetadata records whether optional vendor detail is authoritative.
 type AdvisoryMetadata struct {
-	DetailsComplete    bool `json:"details_complete"`     //nolint:tagliatelle // Public schema uses snake_case.
-	CVEsComplete       bool `json:"cves_complete"`        //nolint:tagliatelle // Public schema uses snake_case.
-	IssueDatesComplete bool `json:"issue_dates_complete"` //nolint:tagliatelle // Public schema uses snake_case.
+	DetailsComplete    bool `json:"details_complete"`
+	CVEsComplete       bool `json:"cves_complete"`
+	IssueDatesComplete bool `json:"issue_dates_complete"`
 }
 
 // AdvisorySummary contains deduplicated advisory and affected-package counts.
 type AdvisorySummary struct {
 	Advisories                 int                    `json:"advisories"`
-	UniqueCVEs                 int                    `json:"unique_cves"`                   //nolint:tagliatelle // Public schema uses snake_case.
-	AdvisoriesBySeverity       AdvisorySeverityCounts `json:"advisories_by_severity"`        //nolint:tagliatelle // Public schema uses snake_case.
-	PackageUpdatesBySeverity   AdvisorySeverityCounts `json:"package_updates_by_severity"`   //nolint:tagliatelle // Public schema uses snake_case.
-	OldestVendorTimestamp      *time.Time             `json:"oldest_vendor_timestamp"`       //nolint:tagliatelle // Public schema uses snake_case.
-	OldestVendorAgeSeconds     *int64                 `json:"oldest_vendor_age_seconds"`     //nolint:tagliatelle // Public schema uses snake_case.
-	OldestVendorTimestampBasis string                 `json:"oldest_vendor_timestamp_basis"` //nolint:tagliatelle // Public schema uses snake_case.
+	UniqueCVEs                 int                    `json:"unique_cves"`
+	AdvisoriesBySeverity       AdvisorySeverityCounts `json:"advisories_by_severity"`
+	PackageUpdatesBySeverity   AdvisorySeverityCounts `json:"package_updates_by_severity"`
+	OldestVendorTimestamp      *time.Time             `json:"oldest_vendor_timestamp"`
+	OldestVendorAgeSeconds     *int64                 `json:"oldest_vendor_age_seconds"`
+	OldestVendorTimestampBasis string                 `json:"oldest_vendor_timestamp_basis"`
 }
 
 // AdvisorySeverityCounts is a complete severity partition.
@@ -74,10 +74,10 @@ type AdvisoryResult struct {
 	Type                 string     `json:"type"`
 	Severity             string     `json:"severity"`
 	Title                string     `json:"title"`
-	IssuedAt             *time.Time `json:"issued_at"`              //nolint:tagliatelle // Public schema uses snake_case.
-	UpdatedAt            *time.Time `json:"updated_at"`             //nolint:tagliatelle // Public schema uses snake_case.
-	CVEIDs               []string   `json:"cve_ids"`                //nolint:tagliatelle // Public schema uses snake_case.
-	AffectedUpdateNEVRAs []string   `json:"affected_update_nevras"` //nolint:tagliatelle // Public schema uses snake_case.
+	IssuedAt             *time.Time `json:"issued_at"`
+	UpdatedAt            *time.Time `json:"updated_at"`
+	CVEIDs               []string   `json:"cve_ids"`
+	AffectedUpdateNEVRAs []string   `json:"affected_update_nevras"`
 }
 
 type advisoryAggregate struct {
@@ -229,6 +229,7 @@ func BuildAdvisories(data dnf.AdvisoryData) (AdvisoryPayload, error) {
 	return payload, nil
 }
 
+//nolint:cyclop // Field-by-field normalization at the payload boundary.
 func normalizeAdvisory(advisory dnf.Advisory) (*advisoryAggregate, error) {
 	if err := validateResultAdvisoryID(advisory.ID); err != nil {
 		return nil, err

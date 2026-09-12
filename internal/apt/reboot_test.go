@@ -1,3 +1,4 @@
+//nolint:testpackage // White-box: the APT collector is an internal package tested through its unexported parsers.
 package apt
 
 import (

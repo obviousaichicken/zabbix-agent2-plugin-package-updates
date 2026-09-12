@@ -149,7 +149,11 @@ DNF reboot status is determined from reboot-sensitive RPM install times and inst
 
 APT collection is read-only. It uses the installed-package database and local package indexes; it does not contact mirrors, download packages, take package-manager locks, or run `apt-get update`. A successful check means the local metadata was readable, not that a mirror is reachable.
 
-The payload reports the oldest participating binary index as `metadata.refreshed_at` and its age as `metadata.age_seconds`. Missing or unreadable indexes fail the check. Old but readable indexes remain valid so the template can warn about stale metadata. Schedule `apt-get update` separately.
+The payload reports when APT last refreshed this host's indexes as `metadata.refreshed_at`, and how long ago that was as `metadata.age_seconds`. The value comes from the paths APT writes while refreshing (`/var/lib/apt/lists/partial`, and `/var/lib/apt/periodic/update-success-stamp` where periodic updates are enabled), using whichever is most recent.
+
+It is deliberately **not** derived from index file modification times. APT stores each index with the `Last-Modified` time the mirror sent, so an index mtime is when the archive published that index, not when this host fetched it. Immutable release pockets such as `trixie/main` or `noble/main` are published once and keep their release-day timestamp forever, which would report years of staleness on a host that refreshes every hour.
+
+Missing or unreadable indexes still fail the check, and old but readable indexes remain valid so the template can warn about stale metadata. Schedule `apt-get update` separately.
 
 Only recognized official security pockets are counted as security updates; all other candidates are classified as `other`. Bugfix and enhancement classifications are unsupported. Update history is best effort and comes from retained `/var/log/apt/history.log*` files. Reboot detection uses `/run/reboot-required`.
 
@@ -189,6 +193,7 @@ The package and advisory item keys are `packages.get` and `advisories.get`.
 ### APT
 
 * The plugin does not refresh package indexes or check mirror health.
+* `metadata.age_seconds` measures the last refresh run, not whether every repository was reachable during it. `apt-get update` exits successfully when some indexes fail and older copies are reused.
 * Bugfix and enhancement classifications are unavailable.
 * Package history is best effort because old APT logs may have been rotated away.
 * APT does not provide the per-advisory monitoring available on DNF.

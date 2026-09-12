@@ -24,6 +24,7 @@ func TestClientPackagesCollectsSecurityUpdate(t *testing.T) {
 
 	now := time.Date(2026, time.August, 31, 12, 0, 0, 0, time.UTC)
 	runner := &fakeAPTRunner{responses: []fakeAPTResponse{
+		{stdout: []byte("amd64\n")},
 		{stdout: readAPTFixture(t, "debian13", "indextargets.txt")},
 		{stdout: readAPTFixture(t, "debian13", "dpkg-query.txt")},
 		{stdout: readAPTFixture(t, "debian13", "policy.txt")},
@@ -57,6 +58,7 @@ func TestClientPackagesCollectsSecurityUpdate(t *testing.T) {
 		name string
 		args []string
 	}{
+		{name: "/usr/bin/dpkg", args: []string{"--print-architecture"}},
 		{name: "/usr/bin/apt-get", args: []string{"indextargets"}},
 		{name: "/usr/bin/dpkg-query", args: []string{"--show", "--showformat=" + installedQueryFormat}},
 		{name: "/usr/bin/apt-cache", args: []string{"policy", "libssl3t64:amd64"}},
@@ -74,8 +76,8 @@ func TestClientPackagesCollectsSecurityUpdate(t *testing.T) {
 			t.Errorf("request[%d] locale = %#v, want C", index, request.Env)
 		}
 	}
-	if !slices.Equal(requests[3].AcceptedExitCodes, []int{1}) {
-		t.Errorf("dpkg accepted exit codes = %v, want [1]", requests[3].AcceptedExitCodes)
+	if !slices.Equal(requests[4].AcceptedExitCodes, []int{1}) {
+		t.Errorf("dpkg accepted exit codes = %v, want [1]", requests[4].AcceptedExitCodes)
 	}
 }
 
@@ -84,6 +86,7 @@ func TestClientPackagesAllowsNoPendingUpdates(t *testing.T) {
 
 	now := time.Date(2026, time.August, 31, 12, 0, 0, 0, time.UTC)
 	runner := &fakeAPTRunner{responses: []fakeAPTResponse{
+		{stdout: []byte("amd64\n")},
 		{stdout: readAPTFixture(t, "debian12", "indextargets.txt")},
 		{stdout: readAPTFixture(t, "debian12", "dpkg-query.txt")},
 		{stdout: readAPTFixture(t, "debian12", "policy.txt")},
@@ -104,8 +107,8 @@ func TestClientPackagesAllowsNoPendingUpdates(t *testing.T) {
 	if data.Updates == nil || len(data.Updates) != 0 {
 		t.Fatalf("Updates = %#v, want non-nil empty slice", data.Updates)
 	}
-	if got := len(runner.Requests()); got != 3 {
-		t.Fatalf("commands = %d, want 3 without version comparison", got)
+	if got := len(runner.Requests()); got != 4 {
+		t.Fatalf("commands = %d, want 4 without version comparison", got)
 	}
 }
 
@@ -114,6 +117,7 @@ func TestClientPackagesClassifiesEveryWinningPrioritySource(t *testing.T) {
 
 	now := time.Date(2026, time.August, 31, 12, 0, 0, 0, time.UTC)
 	runner := &fakeAPTRunner{responses: []fakeAPTResponse{
+		{stdout: []byte("amd64\n")},
 		{stdout: readAPTFixture(t, "ubuntu2204", "indextargets.txt")},
 		{stdout: readAPTFixture(t, "ubuntu2204", "dpkg-query.txt")},
 		{stdout: readAPTFixture(t, "ubuntu2204", "policy.txt")},
@@ -168,6 +172,7 @@ func TestClientPackagesUsesHighestSourcePriority(t *testing.T) {
 `
 	now := time.Date(2026, time.August, 31, 12, 0, 0, 0, time.UTC)
 	runner := &fakeAPTRunner{responses: []fakeAPTResponse{
+		{stdout: []byte("amd64\n")},
 		{stdout: []byte(normal + security)},
 		{stdout: []byte(installed)},
 		{stdout: []byte(policy)},
@@ -199,6 +204,7 @@ func TestClientPackagesDetectsPackageStateRace(t *testing.T) {
 	)
 	now := time.Date(2026, time.August, 31, 12, 0, 0, 0, time.UTC)
 	runner := &fakeAPTRunner{responses: []fakeAPTResponse{
+		{stdout: []byte("amd64\n")},
 		{stdout: readAPTFixture(t, "debian13", "indextargets.txt")},
 		{stdout: readAPTFixture(t, "debian13", "dpkg-query.txt")},
 		{stdout: []byte(policy)},
@@ -214,7 +220,7 @@ func TestClientPackagesDetectsPackageStateRace(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "package state changed") {
 		t.Fatalf("Packages() error = %v, want package-state race", err)
 	}
-	if got := len(runner.Requests()); got != 3 {
+	if got := len(runner.Requests()); got != 4 {
 		t.Fatalf("commands = %d, want no dpkg comparison after race", got)
 	}
 }
@@ -235,6 +241,7 @@ func TestClientPackagesExcludesCandidateDowngrade(t *testing.T) {
 `
 	now := time.Date(2026, time.August, 31, 12, 0, 0, 0, time.UTC)
 	runner := &fakeAPTRunner{responses: []fakeAPTResponse{
+		{stdout: []byte("amd64\n")},
 		{stdout: []byte(index)},
 		{stdout: []byte(installed)},
 		{stdout: []byte(policy)},
@@ -279,6 +286,7 @@ func TestClientPackagesBatchesPolicyCommands(t *testing.T) {
 	}
 	now := time.Date(2026, time.August, 31, 12, 0, 0, 0, time.UTC)
 	runner := &fakeAPTRunner{responses: []fakeAPTResponse{
+		{stdout: []byte("amd64\n")},
 		{stdout: []byte(aptTargetRecord(targetRecordOptions{}))},
 		{stdout: []byte(installed.String())},
 		{stdout: []byte(firstPolicy.String())},
@@ -299,7 +307,7 @@ func TestClientPackagesBatchesPolicyCommands(t *testing.T) {
 		t.Fatalf("Updates = %d, want 0", len(data.Updates))
 	}
 	requests := runner.Requests()
-	if len(requests) != 4 || len(requests[2].Args) != 513 || len(requests[3].Args) != 2 {
+	if len(requests) != 5 || len(requests[3].Args) != 513 || len(requests[4].Args) != 2 {
 		t.Fatalf("policy request sizes = %#v", requestArgumentLengths(requests))
 	}
 }
@@ -321,7 +329,8 @@ func TestClientPackagesHonorsCancellation(t *testing.T) {
 		t.Fatalf("Packages() error = %v, want context canceled", err)
 	}
 	var commandErr *CommandError
-	if !errors.As(err, &commandErr) || commandErr.Operation() != "apt-get indextargets" || !commandErr.IsCanceled() {
+	if !errors.As(err, &commandErr) || commandErr.Operation() != "dpkg print native architecture" ||
+		!commandErr.IsCanceled() {
 		t.Fatalf("Packages() command error = %#v", commandErr)
 	}
 }
@@ -338,13 +347,17 @@ func TestClientPackagesRejectsOversizeCommandOutput(t *testing.T) {
 		want      string
 	}{
 		{
-			name:      "repository indexes",
-			responses: []fakeAPTResponse{{stdout: make([]byte, maxRepositoryIndexBytes+1)}},
-			want:      "repository index output exceeds",
+			name: "repository indexes",
+			responses: []fakeAPTResponse{
+				{stdout: []byte("amd64\n")},
+				{stdout: make([]byte, maxRepositoryIndexBytes+1)},
+			},
+			want: "repository index output exceeds",
 		},
 		{
 			name: "installed packages",
 			responses: []fakeAPTResponse{
+				{stdout: []byte("amd64\n")},
 				{stdout: index},
 				{stdout: make([]byte, maxInstalledOutputBytes+1)},
 			},
@@ -353,6 +366,7 @@ func TestClientPackagesRejectsOversizeCommandOutput(t *testing.T) {
 		{
 			name: "package policy",
 			responses: []fakeAPTResponse{
+				{stdout: []byte("amd64\n")},
 				{stdout: index},
 				{stdout: installed},
 				{stdout: make([]byte, maxPolicyOutputBytes+1)},
@@ -380,40 +394,105 @@ func TestClientPackagesRejectsOversizeCommandOutput(t *testing.T) {
 	}
 }
 
-func TestClientIndexMetadataUsesOldestUniqueIndex(t *testing.T) {
+func TestClientRefreshMetadataUsesNewestAvailableSignal(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, time.August, 31, 12, 0, 0, 0, time.UTC)
 	modified := map[string]time.Time{
-		"/one": now.Add(-time.Hour),
-		"/two": now.Add(-3 * time.Hour),
+		refreshSignalPartial:       now.Add(-3 * time.Hour),
+		refreshSignalPeriodicStamp: now.Add(-time.Hour),
 	}
-	calls := make(map[string]int)
 	client := mustAPTClient(
 		t,
 		&fakeAPTRunner{},
 		func(path string) (fs.FileInfo, error) {
-			calls[path]++
-			return fakeFileInfo{mode: 0o644, modified: modified[path]}, nil
+			stamp, known := modified[path]
+			if !known {
+				return nil, fs.ErrNotExist
+			}
+
+			return fakeFileInfo{mode: fs.ModeDir, modified: stamp}, nil
 		},
 		func() time.Time { return now },
 	)
-	targets := []IndexTarget{{Filename: "/one"}, {Filename: "/two"}, {Filename: "/one"}}
 
-	metadata, err := client.indexMetadata(context.Background(), targets)
+	metadata, err := client.refreshMetadata(context.Background())
 	if err != nil {
-		t.Fatalf("indexMetadata() error = %v", err)
+		t.Fatalf("refreshMetadata() error = %v", err)
 	}
-	if metadata.RefreshedAt == nil || !metadata.RefreshedAt.Equal(modified["/two"]) ||
-		metadata.AgeSeconds == nil || *metadata.AgeSeconds != 10800 {
-		t.Errorf("metadata = %#v", metadata)
-	}
-	if !reflect.DeepEqual(calls, map[string]int{"/one": 1, "/two": 1}) {
-		t.Errorf("stat calls = %#v", calls)
+	if metadata.RefreshedAt == nil || !metadata.RefreshedAt.Equal(now.Add(-time.Hour)) ||
+		metadata.AgeSeconds == nil || *metadata.AgeSeconds != 3600 {
+		t.Errorf("metadata = %#v, want the newest signal", metadata)
 	}
 }
 
-func TestClientIndexMetadataErrorsArePathSafe(t *testing.T) {
+// A manual apt-get update moves lists/partial but never the periodic stamp, so
+// an absent stamp must not suppress the signal that did move.
+func TestClientRefreshMetadataToleratesAbsentSignals(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.August, 31, 12, 0, 0, 0, time.UTC)
+	client := mustAPTClient(
+		t,
+		&fakeAPTRunner{},
+		func(path string) (fs.FileInfo, error) {
+			if path != refreshSignalPartial {
+				return nil, fs.ErrNotExist
+			}
+
+			return fakeFileInfo{mode: fs.ModeDir, modified: now.Add(-90 * time.Second)}, nil
+		},
+		func() time.Time { return now },
+	)
+
+	metadata, err := client.refreshMetadata(context.Background())
+	if err != nil {
+		t.Fatalf("refreshMetadata() error = %v", err)
+	}
+	if metadata.AgeSeconds == nil || *metadata.AgeSeconds != 90 {
+		t.Errorf("metadata = %#v, want a 90 second age", metadata)
+	}
+}
+
+func TestClientRefreshMetadataClampsFutureTimestamps(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.August, 31, 12, 0, 0, 0, time.UTC)
+	client := mustAPTClient(
+		t,
+		&fakeAPTRunner{},
+		func(string) (fs.FileInfo, error) {
+			return fakeFileInfo{mode: fs.ModeDir, modified: now.Add(time.Hour)}, nil
+		},
+		func() time.Time { return now },
+	)
+
+	metadata, err := client.refreshMetadata(context.Background())
+	if err != nil {
+		t.Fatalf("refreshMetadata() error = %v", err)
+	}
+	if metadata.AgeSeconds == nil || *metadata.AgeSeconds != 0 {
+		t.Errorf("metadata = %#v, want a clamped zero age", metadata)
+	}
+}
+
+func TestClientRefreshMetadataFailsWhenNoSignalExists(t *testing.T) {
+	t.Parallel()
+
+	client := mustAPTClient(
+		t,
+		&fakeAPTRunner{},
+		func(string) (fs.FileInfo, error) { return nil, fs.ErrNotExist },
+		time.Now,
+	)
+
+	_, err := client.refreshMetadata(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "no record of a package index refresh") {
+		t.Fatalf("refreshMetadata() error = %v", err)
+	}
+}
+
+func TestClientRefreshMetadataReportsUnreadableSignals(t *testing.T) {
 	t.Parallel()
 
 	sentinel := errors.New("permission denied")
@@ -424,18 +503,68 @@ func TestClientIndexMetadataErrorsArePathSafe(t *testing.T) {
 		time.Now,
 	)
 
-	_, err := client.indexMetadata(context.Background(), []IndexTarget{{Filename: "/secret/alice:s3cr3t/index"}})
+	_, err := client.refreshMetadata(context.Background())
 	if !errors.Is(err, sentinel) {
-		t.Fatalf("indexMetadata() error = %v, want sentinel", err)
+		t.Fatalf("refreshMetadata() error = %v, want sentinel", err)
+	}
+	if !strings.Contains(err.Error(), refreshSignalPartial) {
+		t.Errorf("error should name the fixed signal path: %v", err)
+	}
+}
+
+// Index mtimes are publication times, not refresh times, so index health and
+// metadata age are deliberately separate: a missing index still fails the
+// collection, but never contributes a timestamp.
+func TestClientValidateIndexTargetsChecksEveryUniqueIndex(t *testing.T) {
+	t.Parallel()
+
+	calls := make(map[string]int)
+	client := mustAPTClient(
+		t,
+		&fakeAPTRunner{},
+		func(path string) (fs.FileInfo, error) {
+			calls[path]++
+
+			return fakeFileInfo{mode: 0o644, modified: time.Unix(0, 0)}, nil
+		},
+		time.Now,
+	)
+	targets := []IndexTarget{{Filename: "/one"}, {Filename: "/two"}, {Filename: "/one"}}
+
+	if err := client.validateIndexTargets(context.Background(), targets); err != nil {
+		t.Fatalf("validateIndexTargets() error = %v", err)
+	}
+	if !reflect.DeepEqual(calls, map[string]int{"/one": 1, "/two": 1}) {
+		t.Errorf("stat calls = %#v", calls)
+	}
+}
+
+func TestClientValidateIndexTargetsErrorsArePathSafe(t *testing.T) {
+	t.Parallel()
+
+	sentinel := errors.New("permission denied")
+	client := mustAPTClient(
+		t,
+		&fakeAPTRunner{},
+		func(string) (fs.FileInfo, error) { return nil, sentinel },
+		time.Now,
+	)
+
+	err := client.validateIndexTargets(
+		context.Background(),
+		[]IndexTarget{{Filename: "/secret/alice:s3cr3t/index"}},
+	)
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("validateIndexTargets() error = %v, want sentinel", err)
 	}
 	for _, secret := range []string{"alice", "s3cr3t", "/secret/"} {
 		if strings.Contains(err.Error(), secret) {
-			t.Errorf("index metadata error contains path detail %q: %v", secret, err)
+			t.Errorf("index error contains path detail %q: %v", secret, err)
 		}
 	}
 }
 
-func TestClientIndexMetadataRejectsMissingOrNonRegularIndexes(t *testing.T) {
+func TestClientValidateIndexTargetsRejectsMissingOrNonRegularIndexes(t *testing.T) {
 	t.Parallel()
 
 	client := mustAPTClient(
@@ -446,11 +575,14 @@ func TestClientIndexMetadataRejectsMissingOrNonRegularIndexes(t *testing.T) {
 		},
 		time.Now,
 	)
-	if _, err := client.indexMetadata(context.Background(), nil); err == nil || !strings.Contains(err.Error(), "no enabled") {
+	if err := client.validateIndexTargets(context.Background(), nil); err == nil ||
+		!strings.Contains(err.Error(), "no enabled") {
 		t.Errorf("empty indexes error = %v", err)
 	}
-	if _, err := client.indexMetadata(context.Background(), []IndexTarget{{Filename: "/directory"}}); err == nil ||
-		!strings.Contains(err.Error(), "not a regular file") {
+	if err := client.validateIndexTargets(
+		context.Background(),
+		[]IndexTarget{{Filename: "/directory"}},
+	); err == nil || !strings.Contains(err.Error(), "not a regular file") {
 		t.Errorf("directory index error = %v", err)
 	}
 }

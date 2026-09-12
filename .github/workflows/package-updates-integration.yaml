@@ -185,6 +185,7 @@ jobs:
             agent-version: "7.0"
             dockerfile: .dev/Dockerfile.apt
             build-args: BASE_IMAGE=debian:13 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.0/debian/pool/main/z/zabbix-release/zabbix-release_latest_7.0+debian13_all.deb
+            foreign-architecture: i386
           - name: Ubuntu 22.04 / APT / Zabbix 7.0
             image: ubuntu:22.04
             agent-version: "7.0"
@@ -195,6 +196,7 @@ jobs:
             agent-version: "7.0"
             dockerfile: .dev/Dockerfile.apt
             build-args: BASE_IMAGE=ubuntu:24.04 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest_7.0+ubuntu24.04_all.deb
+            foreign-architecture: i386
           - name: Ubuntu 26.04 / APT / Zabbix 7.4
             image: ubuntu:26.04
             agent-version: "7.4"
@@ -215,9 +217,11 @@ jobs:
       - name: Run read-only APT integration test as zabbix
         env:
           IMAGE: ${{ matrix.image }}
+          FOREIGN_ARCHITECTURE: ${{ matrix.foreign-architecture }}
         run: |
           docker pull "$IMAGE"
           docker run --rm \
+            --env FOREIGN_ARCHITECTURE \
             --volume "$GITHUB_WORKSPACE:/src:ro" \
             --workdir /src \
             "$IMAGE" \
@@ -226,6 +230,18 @@ jobs:
               export DEBIAN_FRONTEND=noninteractive
               apt-get update
               apt-get install -y --no-install-recommends passwd util-linux
+              # apt-cache policy only omits the ":architecture" qualifier for
+              # the native architecture, so a single-architecture container
+              # cannot exercise how qualified headers are resolved.
+              if [ -n "${FOREIGN_ARCHITECTURE:-}" ]; then
+                dpkg --add-architecture "$FOREIGN_ARCHITECTURE"
+                apt-get update
+                apt-get install -y --no-install-recommends "libgcc-s1:${FOREIGN_ARCHITECTURE}"
+                dpkg-query --show --showformat='"'"'${binary:Package} ${Architecture}\n'"'"' | grep ":${FOREIGN_ARCHITECTURE} " || {
+                  echo "no ${FOREIGN_ARCHITECTURE} package is installed" >&2
+                  exit 1
+                }
+              fi
               command -v apt-get
               command -v apt-cache
               command -v dpkg-query

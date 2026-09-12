@@ -60,19 +60,37 @@ type rawPolicySource struct {
 	status      bool
 }
 
+// PolicyRequest describes one apt-cache policy invocation: the exact packages
+// that were passed to it, and the dpkg native architecture that decides how
+// apt-cache spells the package header of each block it prints back.
+type PolicyRequest struct {
+	// Packages are the installed packages passed as name:architecture
+	// arguments, in argument order.
+	Packages []InstalledPackage
+
+	// NativeArchitecture is dpkg --print-architecture, which is also where
+	// APT::Architecture is derived from. Resolving an unqualified block
+	// header is impossible without it.
+	NativeArchitecture string
+}
+
 // ParsePackagePolicies parses one complete apt-cache policy batch and maps
 // exact-candidate source lines to known, credential-free index targets.
 func ParsePackagePolicies(
 	data []byte,
-	requested []InstalledPackage,
+	request PolicyRequest,
 	indexes RepositoryIndexes,
 ) ([]PackagePolicy, error) {
+	if !validArchitecture(request.NativeArchitecture) {
+		return nil, errors.New("apt-cache policy requires a valid native architecture")
+	}
+
 	blocks, err := parsePolicyBlocks(data)
 	if err != nil {
 		return nil, fmt.Errorf("parse apt-cache policy: %w", err)
 	}
 
-	requestedByKey, requestedByName, err := requestedPolicyPackages(requested)
+	requestedByKey, err := requestedPolicyPackages(request.Packages)
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +109,11 @@ func ParsePackagePolicies(
 	policies := make([]PackagePolicy, 0, len(blocks))
 	seen := make(map[string]struct{}, len(blocks))
 	for blockNumber, block := range blocks {
-		pkg, resolveErr := resolvePolicyPackage(block.identifier, requestedByKey, requestedByName)
+		pkg, resolveErr := resolvePolicyPackage(
+			block.identifier,
+			request.NativeArchitecture,
+			requestedByKey,
+		)
 		if resolveErr != nil {
 			return nil, fmt.Errorf("apt-cache policy block %d: %w", blockNumber+1, resolveErr)
 		}
@@ -317,28 +339,40 @@ func leadingSpaces(value string) int {
 
 func requestedPolicyPackages(
 	requested []InstalledPackage,
-) (map[string]InstalledPackage, map[string][]InstalledPackage, error) {
+) (map[string]InstalledPackage, error) {
 	byKey := make(map[string]InstalledPackage, len(requested))
-	byName := make(map[string][]InstalledPackage, len(requested))
 	for _, pkg := range requested {
 		if !validPackageName(pkg.Name) || !validArchitecture(pkg.Architecture) {
-			return nil, nil, errors.New("invalid requested apt-cache policy package")
+			return nil, errors.New("invalid requested apt-cache policy package")
 		}
 		key := packageKey(pkg.Name, pkg.Architecture)
 		if _, duplicate := byKey[key]; duplicate {
-			return nil, nil, fmt.Errorf("duplicate requested apt-cache policy package %s:%s", pkg.Name, pkg.Architecture)
+			return nil, fmt.Errorf("duplicate requested apt-cache policy package %s:%s", pkg.Name, pkg.Architecture)
 		}
 		byKey[key] = pkg
-		byName[pkg.Name] = append(byName[pkg.Name], pkg)
 	}
 
-	return byKey, byName, nil
+	return byKey, nil
 }
 
+// resolvePolicyPackage maps one apt-cache policy block header back to the
+// package that was requested.
+//
+// apt prints block headers with pkgCache::PkgIterator::FullName(true), which
+// omits the ":architecture" qualifier when the package's architecture is the
+// native one, "all", or "any", and appends it otherwise. An unqualified header
+// therefore names a specific architecture rather than an unspecified one, and
+// must never be resolved by assuming the package name is unique: a multi-arch
+// host legitimately has the same name installed for two architectures, apt
+// qualifies only the foreign one, and guessing turns that into either an
+// ambiguity failure or a silent mismatch.
+//
+// dpkg cannot hold both an "all" and an architecture-qualified instance of one
+// name, so at most one candidate below ever exists.
 func resolvePolicyPackage(
 	identifier string,
+	nativeArchitecture string,
 	byKey map[string]InstalledPackage,
-	byName map[string][]InstalledPackage,
 ) (InstalledPackage, error) {
 	if separator := strings.LastIndexByte(identifier, ':'); separator >= 0 {
 		name := identifier[:separator]
@@ -356,12 +390,17 @@ func resolvePolicyPackage(
 	if !validPackageName(identifier) {
 		return InstalledPackage{}, errors.New("invalid package header")
 	}
-	candidates := byName[identifier]
-	if len(candidates) != 1 {
-		return InstalledPackage{}, errors.New("unqualified package header is missing or ambiguous")
+	for _, architecture := range []string{nativeArchitecture, architectureAll} {
+		if pkg, exists := byKey[packageKey(identifier, architecture)]; exists {
+			return pkg, nil
+		}
 	}
 
-	return candidates[0], nil
+	return InstalledPackage{}, fmt.Errorf(
+		"unqualified package header matches no requested %s or %s package",
+		nativeArchitecture,
+		architectureAll,
+	)
 }
 
 func policyTargets(indexes RepositoryIndexes) (map[string]IndexTarget, error) {

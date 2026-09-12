@@ -12,6 +12,11 @@ import (
 const (
 	maxInstalledOutputBytes = 8 << 20
 	maxInstalledLineBytes   = 1 << 20
+
+	// architectureAll is dpkg's architecture for architecture-independent
+	// packages. apt treats it like the native architecture when it decides
+	// whether to qualify a package name.
+	architectureAll = "all"
 )
 
 // InstalledPackage is one package whose dpkg status is exactly installed.

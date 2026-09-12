@@ -1,0 +1,48 @@
+adduser:
+  Installed: 3.137ubuntu1
+  Candidate: 3.137ubuntu1
+  Version table:
+ *** 3.137ubuntu1 500
+        500 http://archive.ubuntu.com/ubuntu noble/main amd64 Packages
+        500 http://archive.ubuntu.com/ubuntu noble/main i386 Packages
+        100 /var/lib/dpkg/status
+libc6:
+  Installed: 2.39-0ubuntu8.9
+  Candidate: 2.39-0ubuntu8.9
+  Version table:
+ *** 2.39-0ubuntu8.9 500
+        500 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 Packages
+        500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages
+        100 /var/lib/dpkg/status
+     2.39-0ubuntu8 500
+        500 http://archive.ubuntu.com/ubuntu noble/main amd64 Packages
+libc6:i386:
+  Installed: 2.39-0ubuntu8.9
+  Candidate: 2.39-0ubuntu8.9
+  Version table:
+ *** 2.39-0ubuntu8.9 500
+        500 http://archive.ubuntu.com/ubuntu noble-updates/main i386 Packages
+        500 http://security.ubuntu.com/ubuntu noble-security/main i386 Packages
+        100 /var/lib/dpkg/status
+     2.39-0ubuntu8 500
+        500 http://archive.ubuntu.com/ubuntu noble/main i386 Packages
+libgcc-s1:
+  Installed: 14.2.0-4ubuntu2~24.04.1
+  Candidate: 14.2.0-4ubuntu2~24.04.1
+  Version table:
+ *** 14.2.0-4ubuntu2~24.04.1 500
+        500 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 Packages
+        500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages
+        100 /var/lib/dpkg/status
+     14-20240412-0ubuntu1 500
+        500 http://archive.ubuntu.com/ubuntu noble/main amd64 Packages
+libgcc-s1:i386:
+  Installed: 14.2.0-4ubuntu2~24.04.1
+  Candidate: 14.2.0-4ubuntu2~24.04.1
+  Version table:
+ *** 14.2.0-4ubuntu2~24.04.1 500
+        500 http://archive.ubuntu.com/ubuntu noble-updates/main i386 Packages
+        500 http://security.ubuntu.com/ubuntu noble-security/main i386 Packages
+        100 /var/lib/dpkg/status
+     14-20240412-0ubuntu1 500
+        500 http://archive.ubuntu.com/ubuntu noble/main i386 Packages

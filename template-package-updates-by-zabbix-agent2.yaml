@@ -1619,7 +1619,7 @@ zabbix_export:
           value_type: UNSIGNED
           units: unixtime
           trends: '0'
-          description: 'Unix timestamp of the oldest local APT binary index used by the collection. The value is 0 when no refresh timestamp is available. The plugin reports cached metadata and never refreshes it.'
+          description: 'Unix timestamp of the last time APT refreshed this host''s package indexes. The value is 0 when no refresh timestamp is available. The plugin reports cached metadata and never refreshes it.'
           preprocessing:
             - type: JAVASCRIPT
               parameters:
@@ -1646,7 +1646,7 @@ zabbix_export:
           key: apt.metadata.age
           value_type: UNSIGNED
           units: s
-          description: 'Age of the oldest local APT binary index used by the collection. Run apt-get update outside the plugin according to local policy when this value is too high.'
+          description: 'Time since APT last refreshed this host''s package indexes. Run apt-get update outside the plugin according to local policy when this value is too high. This is the age of the last refresh run, not the publication age of any single repository index.'
           preprocessing:
             - type: JSONPATH
               parameters:
@@ -1660,9 +1660,9 @@ zabbix_export:
             - uuid: 132587a2e3424dcf88fe7e5c8417a1c1
               expression: 'last(/APT by Zabbix agent 2/apt.metadata.age)>{$APT.METADATA.AGE.MAX}'
               name: 'APT: Package metadata is stale'
-              opdata: 'Oldest package index age: {ITEM.LASTVALUE1}'
+              opdata: 'Time since last index refresh: {ITEM.LASTVALUE1}'
               priority: WARNING
-              description: 'The cached APT package indexes are older than the configured threshold. The plugin does not refresh package metadata.'
+              description: 'APT has not refreshed this host''s package indexes within the configured threshold, so pending-update results are based on ageing metadata. The plugin does not refresh package metadata.'
               tags:
                 - tag: component
                   value: metadata
@@ -1759,7 +1759,7 @@ zabbix_export:
           description: 'Maximum acceptable average collection duration, in seconds.'
         - macro: '{$APT.METADATA.AGE.MAX}'
           value: 2d
-          description: 'Maximum acceptable age of the oldest local APT binary index.'
+          description: 'Maximum acceptable time since the last apt-get update on this host.'
         - macro: '{$APT.NODATA.TIME}'
           value: 30m
           description: 'Time without a successful collection before an availability problem is raised.'
@@ -2072,7 +2072,7 @@ zabbix_export:
           value_type: UNSIGNED
           units: unixtime
           trends: '0'
-          description: 'Unix timestamp of the oldest local APT binary index used by the collection. The value is 0 when no refresh timestamp is available. The plugin reports cached metadata and never refreshes it.'
+          description: 'Unix timestamp of the last time APT refreshed this host''s package indexes. The value is 0 when no refresh timestamp is available. The plugin reports cached metadata and never refreshes it.'
           preprocessing:
             - type: JAVASCRIPT
               parameters:
@@ -2099,7 +2099,7 @@ zabbix_export:
           key: apt.metadata.age
           value_type: UNSIGNED
           units: s
-          description: 'Age of the oldest local APT binary index used by the collection. Run apt-get update outside the plugin according to local policy when this value is too high.'
+          description: 'Time since APT last refreshed this host''s package indexes. Run apt-get update outside the plugin according to local policy when this value is too high. This is the age of the last refresh run, not the publication age of any single repository index.'
           preprocessing:
             - type: JSONPATH
               parameters:
@@ -2113,9 +2113,9 @@ zabbix_export:
             - uuid: 6e072688cbbb488ea224353041dd6206
               expression: 'last(/APT by Zabbix agent 2 active/apt.metadata.age)>{$APT.METADATA.AGE.MAX}'
               name: 'APT: Package metadata is stale'
-              opdata: 'Oldest package index age: {ITEM.LASTVALUE1}'
+              opdata: 'Time since last index refresh: {ITEM.LASTVALUE1}'
               priority: WARNING
-              description: 'The cached APT package indexes are older than the configured threshold. The plugin does not refresh package metadata.'
+              description: 'APT has not refreshed this host''s package indexes within the configured threshold, so pending-update results are based on ageing metadata. The plugin does not refresh package metadata.'
               tags:
                 - tag: component
                   value: metadata
@@ -2212,7 +2212,7 @@ zabbix_export:
           description: 'Maximum acceptable average collection duration, in seconds.'
         - macro: '{$APT.METADATA.AGE.MAX}'
           value: 2d
-          description: 'Maximum acceptable age of the oldest local APT binary index.'
+          description: 'Maximum acceptable time since the last apt-get update on this host.'
         - macro: '{$APT.NODATA.TIME}'
           value: 30m
           description: 'Time without a successful collection before an availability problem is raised.'

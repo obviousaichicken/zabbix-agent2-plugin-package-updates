@@ -188,10 +188,7 @@ func TestRunnerDescendantHelper(_ *testing.T) {
 		os.Exit(2)
 	}
 
-	pid := strconv.Itoa(cmd.Process.Pid)
-	//nolint:gosec // The helper writes to the PID path this test itself set.
-	err = os.WriteFile(os.Getenv(helperProcessPIDFileEnv), []byte(pid), 0o600)
-	if err != nil {
+	if err = writeHelperPID(os.Getenv(helperProcessPIDFileEnv), cmd.Process.Pid); err != nil {
 		_ = cmd.Process.Kill()
 
 		os.Exit(2)
@@ -200,6 +197,24 @@ func TestRunnerDescendantHelper(_ *testing.T) {
 	if cmd.Wait() != nil {
 		os.Exit(2)
 	}
+}
+
+// writeHelperPID publishes the descendant's PID atomically. os.WriteFile
+// creates the file and then writes it, so a reader polling for the file can
+// open it in between and read nothing. waitForHelperPID then fails on a PID it
+// cannot parse instead of retrying, which is a race it can only lose under
+// load. Renaming into place leaves no state where the file exists but is not
+// yet complete, and keeps an unparseable PID meaning what it should: a bug in
+// this helper, not a poll that arrived early.
+func writeHelperPID(path string, pid int) error {
+	temporary := path + ".tmp"
+	//nolint:gosec // The helper writes to the PID path this test itself set.
+	if err := os.WriteFile(temporary, []byte(strconv.Itoa(pid)), 0o600); err != nil {
+		return err
+	}
+
+	//nolint:gosec // The helper writes to the PID path this test itself set.
+	return os.Rename(temporary, path)
 }
 
 func readHelperPID(path string) (int, error) {

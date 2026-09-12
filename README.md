@@ -153,12 +153,12 @@ Valid values are `auto`, `dnf`, and `apt`. A forced backend skips distribution-f
 
 ### Derivatives
 
-Because detection falls back to `ID_LIKE`, distributions this project has never tested still work. On the APT side that covers LMDE, Pop!_OS, Zorin OS, elementary OS, Kali, Devuan and Raspberry Pi OS; on the DNF side Amazon Linux 2023, Nobara, EuroLinux and the other RHEL rebuilds. Anything whose `ID_LIKE` names neither family, such as openSUSE or Arch, is refused at startup rather than guessed at.
+Because detection falls back to `ID_LIKE`, distributions this project has never tested still work. On the APT side that covers LMDE, Pop!_OS, Zorin OS, elementary OS, Kali, Devuan and Raspberry Pi OS; on the DNF side Nobara, EuroLinux and the other RHEL rebuilds. Anything whose `ID_LIKE` names neither family, such as openSUSE or Arch, is refused at startup rather than guessed at.
 
 Two things are worth knowing before relying on one:
 
 * None of them is in the test matrix, and the installer does not check their versions. It accepts any release with a note saying the version was not checked, because their numbering is their own. They are covered by the detection rule and nothing else.
-* Security classification recognizes the official Debian and Ubuntu security pockets only. A derivative that serves its own security updates from its own repository, such as Devuan, Kali or Raspberry Pi OS, reports those updates as `other`, so a security count of zero on such a host means "none recognized", not "none pending". Pop!_OS, Zorin and elementary keep the Ubuntu pockets for the base system, so those are still classified correctly.
+* Security classification matches the official Debian and Ubuntu security pockets by repository origin, so it holds on any derivative that keeps them, which the Ubuntu-based ones do for the base system. Updates served from a derivative's own repository are classified as `other` whatever they contain, so on a derivative read a security count of zero as "none recognized" rather than "none pending".
 
 ### Reboot detection
 

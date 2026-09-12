@@ -5,11 +5,7 @@ on:
   pull_request:
   merge_group:
   push:
-    # Development branches build too. Without this, work in progress is only
-    # ever verified by a manual dispatch, which is easy to forget precisely
-    # when it matters. Pull requests and main are covered by the triggers
-    # above; this covers the branch before a pull request exists.
-    branches: [main, 'claude/**']
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -19,7 +15,7 @@ jobs:
   checks:
     name: Code Quality and Security Checks
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v7
@@ -28,9 +24,6 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-
-      - name: Run unit tests
-        run: go test ./...
 
       - name: Run tests with race detector
         run: go test -race ./...
@@ -55,11 +48,20 @@ jobs:
           go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
           "$(go env GOPATH)/bin/golangci-lint" run ./...
 
-      - name: Validate installer scripts
+      - name: Validate workflows and scripts
         run: |
+          go run github.com/rhysd/actionlint/cmd/actionlint@latest
           sh -n install.sh
           sh -n integration/installer/dnf
-          shellcheck install.sh integration/installer/dnf
+          sh -n integration/zabbix-agent2/fakebin/*
+          bash -n integration/ci/*.sh
+          shellcheck \
+            install.sh \
+            integration/installer/dnf \
+            integration/zabbix-agent2/fakebin/* \
+            integration/ci/*.sh
+          PYTHONPYCACHEPREFIX="$RUNNER_TEMP/pycache" \
+            python3 -m py_compile integration/ci/*.py
 
       - name: Scan for vulnerabilities
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...

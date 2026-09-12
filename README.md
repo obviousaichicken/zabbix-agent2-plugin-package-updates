@@ -64,7 +64,7 @@ The installer detects DNF or APT, verifies the downloaded binary, checks package
 
 ### 2. Import the template
 
-Download [template-package-updates-by-zabbix-agent2.yaml](templates/template-package-updates-by-zabbix-agent2.yaml), import it from **Data collection > Templates > Import**, and link the matching passive or active DNF/APT template to the host.
+Download [template-package-updates-by-zabbix-agent2.yaml](https://github.com/obviousaichicken/zabbix-agent2-plugin-package-updates/releases/latest/download/template-package-updates-by-zabbix-agent2.yaml), import it from **Data collection > Templates > Import**, and link the matching passive or active DNF/APT template to the host.
 
 ### 3. Confirm collection
 

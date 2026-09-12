@@ -1,0 +1,46 @@
+name: Compatibility / Agent 2 Protocol
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  protocol:
+    name: Protocol / Agent ${{ matrix.version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        # The external-plugin protocol is branch-level. Exercise three pinned
+        # representatives per branch instead of every patch release.
+        version:
+          - 7.0.0
+          - 7.0.15
+          - 7.0.30
+          - 7.2.0
+          - 7.2.8
+          - 7.2.15
+          - 7.4.0
+          - 7.4.7
+          - 7.4.14
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: compatibility-plugin
+          path: .
+
+      - name: Prepare plugin
+        run: chmod +x zabbix-agent2-plugin-package-updates
+
+      - name: Test Agent 2 plugin socket protocol
+        env:
+          AGENT_IMAGE: zabbix/zabbix-agent2:alpine-${{ matrix.version }}
+          FAKE_DNF_HISTORY: populated
+        run: integration/ci/test-agent2-protocol.sh

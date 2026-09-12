@@ -34,18 +34,18 @@ COPY integration/installer/dnf /tmp/install-test-bin/dnf
 COPY --from=builder /out/ /tmp/release/
 
 # Put a validating DNF shim in front of the real binary so every image build
-# exercises the installer's noninteractive repository-key bootstrap.
+# exercises the installer's noninteractive DNF preflight contract.
 RUN chmod 0755 /tmp/install-test-bin/dnf && \
-    install -d -m 0777 /tmp/dnf-bootstrap-check && \
+    install -d -m 0777 /tmp/dnf-preflight-check && \
     PATH="/tmp/install-test-bin:${PATH}" \
-        DNF_BOOTSTRAP_CHECK_DIR=/tmp/dnf-bootstrap-check \
+        DNF_PREFLIGHT_CHECK_DIR=/tmp/dnf-preflight-check \
         RELEASE_URL=file:///tmp/release \
         SKIP_SERVICE_RESTART=1 \
         /tmp/install.sh && \
-    test -f /tmp/dnf-bootstrap-check/repolist && \
-    test -f /tmp/dnf-bootstrap-check/repoquery && \
+    test -f /tmp/dnf-preflight-check/repolist && \
+    test -f /tmp/dnf-preflight-check/repoquery && \
     rm -rf \
-        /tmp/dnf-bootstrap-check \
+        /tmp/dnf-preflight-check \
         /tmp/install-test-bin \
         /tmp/install.sh \
         /tmp/release

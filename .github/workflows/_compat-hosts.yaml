@@ -1,0 +1,214 @@
+name: Compatibility / Host Platforms
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  apt:
+    name: Host / ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Debian 12 / APT / Agent 7.0
+            image: debian:12
+            build-args: BASE_IMAGE=debian:12 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.0/debian/pool/main/z/zabbix-release/zabbix-release_latest_7.0+debian12_all.deb
+          - name: Debian 13 / APT / Agent 7.0
+            image: debian:13
+            build-args: BASE_IMAGE=debian:13 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.0/debian/pool/main/z/zabbix-release/zabbix-release_latest_7.0+debian13_all.deb
+          - name: Ubuntu 22.04 / APT / Agent 7.0
+            image: ubuntu:22.04
+            build-args: BASE_IMAGE=ubuntu:22.04 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest_7.0+ubuntu22.04_all.deb
+          - name: Ubuntu 24.04 / APT / Agent 7.0
+            image: ubuntu:24.04
+            build-args: BASE_IMAGE=ubuntu:24.04 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest_7.0+ubuntu24.04_all.deb
+          - name: Ubuntu 24.04 / APT / Agent 7.2
+            image: ubuntu:24.04
+            build-args: BASE_IMAGE=ubuntu:24.04 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.2/release/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest_7.2+ubuntu24.04_all.deb
+          # Zabbix does not publish repositories for interim Ubuntu releases.
+          # These rows use Ubuntu's own zabbix-agent2 package instead.
+          - name: Ubuntu 25.04 / APT / distribution Agent
+            image: ubuntu:25.04
+            build-args: BASE_IMAGE=ubuntu:25.04
+          - name: Ubuntu 25.10 / APT / distribution Agent
+            image: ubuntu:25.10
+            build-args: BASE_IMAGE=ubuntu:25.10
+          - name: Ubuntu 26.04 / APT / Agent 7.4
+            image: ubuntu:26.04
+            build-args: BASE_IMAGE=ubuntu:26.04 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.4/release/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest_7.4+ubuntu26.04_all.deb
+          # Mint proves ID_LIKE and derivative VERSION_ID handling against
+          # real Ubuntu derivatives rather than synthetic os-release fixtures.
+          - name: Linux Mint 21 / APT / Agent 7.0
+            image: linuxmintd/mint21-amd64
+            build-args: BASE_IMAGE=linuxmintd/mint21-amd64 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest_7.0+ubuntu22.04_all.deb
+          - name: Linux Mint 22 / APT / Agent 7.0
+            image: linuxmintd/mint22-amd64
+            build-args: BASE_IMAGE=linuxmintd/mint22-amd64 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest_7.0+ubuntu24.04_all.deb
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: compatibility-integration-test
+          path: .
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: compatibility-apt-dpkg-test
+          path: .
+
+      - name: Prepare integration tests
+        run: |
+          chmod +x integration.test apt-dpkg.test
+
+      - name: Run read-only APT integration tests as zabbix
+        env:
+          IMAGE: ${{ matrix.image }}
+          FOREIGN_ARCHITECTURE: i386
+        run: |
+          docker pull "$IMAGE"
+          docker run --rm \
+            --env FOREIGN_ARCHITECTURE \
+            --volume "$GITHUB_WORKSPACE:/src:ro" \
+            --workdir /src \
+            "$IMAGE" \
+            /bin/bash /src/integration/ci/run-apt-smoke.sh
+
+      - name: Build Agent 2 image and test installer
+        env:
+          BUILD_ARGS: ${{ matrix.build-args }}
+          DOCKERFILE: integration/lab/Dockerfile.apt
+          TEST_IMAGE: zabbix-agent2-plugin-package-updates:apt-integration
+        run: integration/ci/build-host-image.sh
+
+      - name: Test installed APT Agent 2 plugin as zabbix
+        env:
+          BACKEND: apt
+          TEST_IMAGE: zabbix-agent2-plugin-package-updates:apt-integration
+        run: integration/ci/test-installed-plugin.sh
+
+  dnf:
+    name: Host / ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: UBI 8 / DNF4 / Agent 7.0
+            image: registry.access.redhat.com/ubi8/ubi:latest
+            dockerfile: integration/lab/Dockerfile.ubi
+            build-args: UBI_VERSION=8 UBI_TAG=latest
+          - name: UBI 9 / DNF4 / Agent 7.0
+            image: registry.access.redhat.com/ubi9/ubi:latest
+            dockerfile: integration/lab/Dockerfile.ubi
+            build-args: UBI_VERSION=9 UBI_TAG=latest
+          - name: UBI 9 / DNF4 / Agent 7.2
+            image: registry.access.redhat.com/ubi9/ubi:latest
+            dockerfile: integration/lab/Dockerfile.ubi
+            build-args: UBI_VERSION=9 UBI_TAG=latest ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.2/release/rhel/9/noarch/zabbix-release-latest.el9.noarch.rpm
+          - name: UBI 9 / DNF4 / Agent 7.4
+            image: registry.access.redhat.com/ubi9/ubi:latest
+            dockerfile: integration/lab/Dockerfile.ubi
+            build-args: UBI_VERSION=9 UBI_TAG=latest ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.4/release/rhel/9/noarch/zabbix-release-latest.el9.noarch.rpm
+          - name: UBI 10 / DNF / Agent 7.0
+            image: registry.access.redhat.com/ubi10/ubi:latest
+            dockerfile: integration/lab/Dockerfile.ubi
+            build-args: UBI_VERSION=10 UBI_TAG=latest
+          - name: Fedora 43 / DNF5 / Agent 7.0
+            image: fedora:43
+            dockerfile: integration/lab/Dockerfile.dnf
+            build-args: BASE_IMAGE=fedora:43 ZABBIX_RHEL_VERSION=10
+          - name: Fedora 44 / DNF5 / Agent 7.0
+            image: fedora:44
+            dockerfile: integration/lab/Dockerfile.dnf
+            build-args: BASE_IMAGE=fedora:44 ZABBIX_RHEL_VERSION=10
+          - name: Fedora 44 / DNF5 / Agent 7.4
+            image: fedora:44
+            dockerfile: integration/lab/Dockerfile.dnf
+            build-args: BASE_IMAGE=fedora:44 ZABBIX_RHEL_VERSION=10 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.4/release/rhel/10/noarch/zabbix-release-latest.el10.noarch.rpm
+          - name: Rocky Linux 8 / DNF4 / Agent 7.0
+            image: rockylinux/rockylinux:8
+            dockerfile: integration/lab/Dockerfile.dnf
+            build-args: BASE_IMAGE=rockylinux/rockylinux:8 ZABBIX_RHEL_VERSION=8
+          - name: Rocky Linux 9 / DNF / Agent 7.0
+            image: rockylinux/rockylinux:9
+            dockerfile: integration/lab/Dockerfile.dnf
+            build-args: BASE_IMAGE=rockylinux/rockylinux:9 ZABBIX_RHEL_VERSION=9
+          - name: Rocky Linux 10 / DNF / Agent 7.0
+            image: rockylinux/rockylinux:10
+            dockerfile: integration/lab/Dockerfile.dnf
+            build-args: BASE_IMAGE=rockylinux/rockylinux:10 ZABBIX_RHEL_VERSION=10
+          - name: AlmaLinux 8 / DNF4 / Agent 7.0
+            image: almalinux:8
+            dockerfile: integration/lab/Dockerfile.dnf
+            build-args: BASE_IMAGE=almalinux:8 ZABBIX_RHEL_VERSION=8
+          - name: AlmaLinux 9 / DNF / Agent 7.0
+            image: almalinux:9
+            dockerfile: integration/lab/Dockerfile.dnf
+            build-args: BASE_IMAGE=almalinux:9 ZABBIX_RHEL_VERSION=9
+          - name: AlmaLinux 10 / DNF / Agent 7.0
+            image: almalinux:10
+            dockerfile: integration/lab/Dockerfile.dnf
+            build-args: BASE_IMAGE=almalinux:10 ZABBIX_RHEL_VERSION=10
+          - name: Oracle Linux 8 / DNF4 / Agent 7.0
+            image: oraclelinux:8
+            dockerfile: integration/lab/Dockerfile.dnf
+            build-args: BASE_IMAGE=oraclelinux:8 ZABBIX_RHEL_VERSION=8
+          - name: Oracle Linux 9 / DNF / Agent 7.0
+            image: oraclelinux:9
+            dockerfile: integration/lab/Dockerfile.dnf
+            build-args: BASE_IMAGE=oraclelinux:9 ZABBIX_RHEL_VERSION=9
+          - name: Oracle Linux 10 / DNF / Agent 7.0
+            image: oraclelinux:10
+            dockerfile: integration/lab/Dockerfile.dnf
+            build-args: BASE_IMAGE=oraclelinux:10 ZABBIX_RHEL_VERSION=10
+          - name: CentOS Stream 9 / DNF / Agent 7.0
+            image: quay.io/centos/centos:stream9
+            dockerfile: integration/lab/Dockerfile.dnf
+            build-args: BASE_IMAGE=quay.io/centos/centos:stream9 ZABBIX_RHEL_VERSION=9
+          - name: CentOS Stream 10 / DNF / Agent 7.0
+            image: quay.io/centos/centos:stream10
+            dockerfile: integration/lab/Dockerfile.dnf
+            build-args: BASE_IMAGE=quay.io/centos/centos:stream10 ZABBIX_RHEL_VERSION=10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: compatibility-integration-test
+          path: .
+
+      - name: Prepare integration test
+        run: chmod +x integration.test
+
+      - name: Run DNF integration test
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: |
+          docker pull "$IMAGE"
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE:/src:ro" \
+            --workdir /src \
+            "$IMAGE" \
+            /bin/bash /src/integration/ci/run-dnf-smoke.sh
+
+      - name: Build Agent 2 image and test noninteractive DNF preflight
+        env:
+          BUILD_ARGS: ${{ matrix.build-args }}
+          DOCKERFILE: ${{ matrix.dockerfile }}
+          TEST_IMAGE: zabbix-agent2-plugin-package-updates:dnf-integration
+        run: integration/ci/build-host-image.sh
+
+      - name: Test installed Agent 2 advisories
+        env:
+          BACKEND: dnf
+          TEST_IMAGE: zabbix-agent2-plugin-package-updates:dnf-integration
+        run: integration/ci/test-installed-plugin.sh

@@ -51,7 +51,11 @@ Every linter named by a `//nolint` directive in this repository is enabled, and
 `nolintlint` rejects a directive that suppresses nothing or that omits an
 explanation. Add the waiver and the reason together, or fix the finding.
 
-The integration workflow additionally runs the collectors and installed plugin inside every supported distribution image, exercises representative Agent 2 versions, and validates the release installer paths.
+The compatibility workflows run the collectors and installed plugin inside every supported distribution image, exercise representative Agent 2 versions, and validate the templates against every supported Zabbix branch. The executable test logic lives in `integration/ci/` so the workflow YAML remains limited to triggers, matrices, and job wiring.
+
+## Releases
+
+Pushing a `v*` tag runs every code, compatibility, and installer gate before publishing it. To release manually, run the **Build and Publish Release** workflow on the commit to release and provide a new `v`-prefixed tag; the workflow creates that tag only after the selected commit passes every gate. In both cases, the post-publication matrix installs from `releases/latest` to verify the same URL used by the quick-start installer.
 
 ## Template tests
 
@@ -97,7 +101,7 @@ The lab builds a representative DNF set, including Oracle Linux, plus Debian and
 
 Open <http://localhost:7070> and sign in with `Admin` / `zabbix`.
 
-The broader DNF and APT distribution matrix runs in CI. See [compatibility.yaml](../.github/workflows/compatibility.yaml) for the exact images and Zabbix Agent 2 versions.
+The broader DNF and APT distribution matrix runs in CI. [compatibility.yaml](../.github/workflows/compatibility.yaml) is the public entry point and stable compatibility gate. Its reusable [host](../.github/workflows/_compat-hosts.yaml), [Agent 2 protocol](../.github/workflows/_compat-agent2.yaml), and [template](../.github/workflows/_compat-templates.yaml) workflows contain the exact platform and version matrices.
 
 ## Project layout
 
@@ -117,6 +121,7 @@ The broader DNF and APT distribution matrix runs in CI. See [compatibility.yaml]
 |`integration/lab/`|Local multi-distribution Zabbix lab and Dockerfiles|
 |`integration/templates/`|Disposable Zabbix server, web/API, and database for template fixture tests|
 |`integration/installer/`|Installer test fixtures|
+|`integration/ci/`|Locally runnable compatibility orchestration and output assertions|
 |`integration/zabbix-agent2/`|Agent 2 compatibility-test configuration and command fixtures|
 |`.github/workflows/`|Unit, integration, release, and smoke-test automation|
 

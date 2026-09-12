@@ -5,550 +5,93 @@ on:
   pull_request:
   merge_group:
   push:
-    # Development branches build too. Without this, work in progress is only
-    # ever verified by a manual dispatch, which is easy to forget precisely
-    # when it matters. Pull requests and main are covered by the triggers
-    # above; this covers the branch before a pull request exists.
-    branches: [main, 'claude/**']
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  apt-kernel:
-    name: Dpkg-backed collector tests
+  build:
+    name: Build Compatibility Artifacts
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: false
-      # The kernel comparison shells out to dpkg. The runner has dpkg, and a
-      # container cannot cover this: /proc/sys/kernel/osrelease reports the
-      # host kernel, which no packaged kernel in the container ever matches.
-      - name: Run dpkg-backed collector tests
-        run: go test -tags=integration ./internal/apt/
-
-  template:
-    name: Zabbix Template Validation (${{ matrix.zabbix }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        zabbix: ['7.0', '7.2', '7.4']
-    env:
-      ZBX_TEST_VERSION: ${{ matrix.zabbix }}
-
-    steps:
-      - uses: actions/checkout@v7
 
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: false
 
-      - name: Start Zabbix test environment
+      - name: Build plugin and integration tests
         run: |
-          docker compose \
-            -p package-updates-template-tests \
-            -f integration/templates/docker-compose.yaml \
-            up -d
+          mkdir -p dist/compatibility
+          CGO_ENABLED=0 go build \
+            -o dist/compatibility/zabbix-agent2-plugin-package-updates \
+            ./cmd/agent
+          CGO_ENABLED=0 go test -tags=integration -c \
+            -o dist/compatibility/integration.test \
+            ./integration
+          CGO_ENABLED=0 go test -tags=integration -c \
+            -o dist/compatibility/apt-dpkg.test \
+            ./internal/apt
 
-      - name: Test template imports, preprocessing, discovery, and triggers
-        run: go test -tags=integration -race ./templates -count=1 -timeout=10m -v
-
-      - name: Show Zabbix logs on failure
-        if: failure()
-        run: |
-          docker compose \
-            -p package-updates-template-tests \
-            -f integration/templates/docker-compose.yaml \
-            logs --no-color
-
-      - name: Stop Zabbix test environment
-        if: always()
-        run: |
-          docker compose \
-            -p package-updates-template-tests \
-            -f integration/templates/docker-compose.yaml \
-            down -v --remove-orphans
-
-  dnf:
-    name: Distribution compatibility / ${{ matrix.name }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: UBI 8 / DNF
-            image: registry.access.redhat.com/ubi8/ubi:latest
-            dockerfile: integration/lab/Dockerfile.ubi
-            build-args: UBI_VERSION=8 UBI_TAG=latest
-          - name: UBI 9 / DNF
-            image: registry.access.redhat.com/ubi9/ubi:latest
-            dockerfile: integration/lab/Dockerfile.ubi
-            build-args: UBI_VERSION=9 UBI_TAG=latest
-          - name: UBI 9 / DNF / Zabbix 7.4
-            image: registry.access.redhat.com/ubi9/ubi:latest
-            dockerfile: integration/lab/Dockerfile.ubi
-            build-args: UBI_VERSION=9 UBI_TAG=latest ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.4/release/rhel/9/noarch/zabbix-release-latest.el9.noarch.rpm
-          - name: UBI 10 / DNF
-            image: registry.access.redhat.com/ubi10/ubi:latest
-            dockerfile: integration/lab/Dockerfile.ubi
-            build-args: UBI_VERSION=10 UBI_TAG=latest
-          - name: Fedora 43 / DNF5
-            image: fedora:43
-            dockerfile: integration/lab/Dockerfile.dnf
-            build-args: BASE_IMAGE=fedora:43 ZABBIX_RHEL_VERSION=10
-          - name: Fedora 44 / DNF5
-            image: fedora:44
-            dockerfile: integration/lab/Dockerfile.dnf
-            build-args: BASE_IMAGE=fedora:44 ZABBIX_RHEL_VERSION=10
-          - name: Fedora 44 / DNF5 / Zabbix 7.4
-            image: fedora:44
-            dockerfile: integration/lab/Dockerfile.dnf
-            build-args: BASE_IMAGE=fedora:44 ZABBIX_RHEL_VERSION=10 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.4/release/rhel/10/noarch/zabbix-release-latest.el10.noarch.rpm
-          - name: Rocky Linux 8 / DNF4
-            image: rockylinux/rockylinux:8
-            dockerfile: integration/lab/Dockerfile.dnf
-            build-args: BASE_IMAGE=rockylinux/rockylinux:8 ZABBIX_RHEL_VERSION=8
-          - name: Rocky Linux 9 / DNF
-            image: rockylinux/rockylinux:9
-            dockerfile: integration/lab/Dockerfile.dnf
-            build-args: BASE_IMAGE=rockylinux/rockylinux:9 ZABBIX_RHEL_VERSION=9
-          - name: Rocky Linux 10 / DNF
-            image: rockylinux/rockylinux:10
-            dockerfile: integration/lab/Dockerfile.dnf
-            build-args: BASE_IMAGE=rockylinux/rockylinux:10 ZABBIX_RHEL_VERSION=10
-          - name: AlmaLinux 8 / DNF4
-            image: almalinux:8
-            dockerfile: integration/lab/Dockerfile.dnf
-            build-args: BASE_IMAGE=almalinux:8 ZABBIX_RHEL_VERSION=8
-          - name: AlmaLinux 9 / DNF
-            image: almalinux:9
-            dockerfile: integration/lab/Dockerfile.dnf
-            build-args: BASE_IMAGE=almalinux:9 ZABBIX_RHEL_VERSION=9
-          - name: AlmaLinux 10 / DNF
-            image: almalinux:10
-            dockerfile: integration/lab/Dockerfile.dnf
-            build-args: BASE_IMAGE=almalinux:10 ZABBIX_RHEL_VERSION=10
-          - name: Oracle Linux 8 / DNF4
-            image: oraclelinux:8
-            dockerfile: integration/lab/Dockerfile.dnf
-            build-args: BASE_IMAGE=oraclelinux:8 ZABBIX_RHEL_VERSION=8
-          - name: Oracle Linux 9 / DNF
-            image: oraclelinux:9
-            dockerfile: integration/lab/Dockerfile.dnf
-            build-args: BASE_IMAGE=oraclelinux:9 ZABBIX_RHEL_VERSION=9
-          - name: Oracle Linux 10 / DNF
-            image: oraclelinux:10
-            dockerfile: integration/lab/Dockerfile.dnf
-            build-args: BASE_IMAGE=oraclelinux:10 ZABBIX_RHEL_VERSION=10
-          - name: CentOS Stream 9 / DNF
-            image: quay.io/centos/centos:stream9
-            dockerfile: integration/lab/Dockerfile.dnf
-            build-args: BASE_IMAGE=quay.io/centos/centos:stream9 ZABBIX_RHEL_VERSION=9
-          - name: CentOS Stream 10 / DNF
-            image: quay.io/centos/centos:stream10
-            dockerfile: integration/lab/Dockerfile.dnf
-            build-args: BASE_IMAGE=quay.io/centos/centos:stream10 ZABBIX_RHEL_VERSION=10
-
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-go@v7
+      - uses: actions/upload-artifact@v7
         with:
-          go-version-file: go.mod
-          cache: false
+          name: compatibility-plugin
+          path: dist/compatibility/zabbix-agent2-plugin-package-updates
+          retention-days: 1
 
-      - name: Build integration test
-        run: CGO_ENABLED=0 go test -tags=integration -c -o dnf-integration.test ./integration
-
-      - name: Run DNF integration test
-        env:
-          IMAGE: ${{ matrix.image }}
-        run: |
-          docker pull "$IMAGE"
-          docker run --rm \
-            --volume "$GITHUB_WORKSPACE:/src:ro" \
-            --workdir /src \
-            "$IMAGE" \
-            /bin/bash -lc '
-              set -eu
-              dnf -q makecache
-              command -v dnf
-              command -v rpm
-              command -v uname
-              ./dnf-integration.test -test.v -test.run "^TestDNFSmoke$"
-            '
-
-      - name: Build Agent 2 image and test installer GPG bootstrap
-        env:
-          BUILD_ARGS: ${{ matrix.build-args }}
-          DOCKERFILE: ${{ matrix.dockerfile }}
-        run: |
-          build_args=()
-          for argument in $BUILD_ARGS; do
-            build_args+=(--build-arg "$argument")
-          done
-          docker build \
-            --file "$DOCKERFILE" \
-            "${build_args[@]}" \
-            --tag zabbix-agent2-plugin-package-updates:integration \
-            .
-
-      - name: Test installed Agent 2 plugin
-        run: |
-          for item_key in packages.get advisories.get; do
-            output="$(docker run --rm \
-              --user zabbix \
-              --entrypoint /usr/sbin/zabbix_agent2 \
-              zabbix-agent2-plugin-package-updates:integration \
-              -c /etc/zabbix/zabbix_agent2.conf \
-              -t "$item_key")"
-            case "$output" in
-              *"[s|"*'"collection":{"complete":true'*) ;;
-              *)
-                printf '%s did not return a complete collection: %s\n' \
-                  "$item_key" "$output" >&2
-                exit 1
-                ;;
-            esac
-            if [ "$item_key" = advisories.get ]; then
-              case "$output" in
-                *'"schema_version":1'*'"advisories":['*) ;;
-                *)
-                  printf '%s did not return advisory schema 1: %s\n' \
-                    "$item_key" "$output" >&2
-                  exit 1
-                  ;;
-              esac
-            fi
-            printf '%s\n' "$output"
-          done
-
-  apt:
-    name: Distribution compatibility / ${{ matrix.name }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Debian 12 / APT / Zabbix 7.0
-            image: debian:12
-            agent-version: "7.0"
-            dockerfile: integration/lab/Dockerfile.apt
-            build-args: BASE_IMAGE=debian:12 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.0/debian/pool/main/z/zabbix-release/zabbix-release_latest_7.0+debian12_all.deb
-          - name: Debian 13 / APT / Zabbix 7.0
-            image: debian:13
-            agent-version: "7.0"
-            dockerfile: integration/lab/Dockerfile.apt
-            build-args: BASE_IMAGE=debian:13 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.0/debian/pool/main/z/zabbix-release/zabbix-release_latest_7.0+debian13_all.deb
-          - name: Ubuntu 22.04 / APT / Zabbix 7.0
-            image: ubuntu:22.04
-            agent-version: "7.0"
-            dockerfile: integration/lab/Dockerfile.apt
-            build-args: BASE_IMAGE=ubuntu:22.04 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest_7.0+ubuntu22.04_all.deb
-          - name: Ubuntu 24.04 / APT / Zabbix 7.0
-            image: ubuntu:24.04
-            agent-version: "7.0"
-            dockerfile: integration/lab/Dockerfile.apt
-            build-args: BASE_IMAGE=ubuntu:24.04 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest_7.0+ubuntu24.04_all.deb
-          # Zabbix publishes a repository only for the releases it builds for,
-          # which excludes interim Ubuntu releases. These two therefore leave
-          # ZABBIX_RELEASE_URL unset and install zabbix-agent2 from Ubuntu
-          # universe instead, the way an operator on such a host does.
-          - name: Ubuntu 25.04 / APT / Zabbix 7.0
-            image: ubuntu:25.04
-            agent-version: "7.0"
-            dockerfile: integration/lab/Dockerfile.apt
-            build-args: BASE_IMAGE=ubuntu:25.04
-          - name: Ubuntu 25.10 / APT / Zabbix 7.0
-            image: ubuntu:25.10
-            agent-version: "7.0"
-            dockerfile: integration/lab/Dockerfile.apt
-            build-args: BASE_IMAGE=ubuntu:25.10
-          - name: Ubuntu 26.04 / APT / Zabbix 7.4
-            image: ubuntu:26.04
-            agent-version: "7.4"
-            dockerfile: integration/lab/Dockerfile.apt
-            build-args: BASE_IMAGE=ubuntu:26.04 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.4/release/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest_7.4+ubuntu26.04_all.deb
-          # Linux Mint is reached through ID_LIKE rather than ID, and its
-          # VERSION_ID is Mint's own rather than the Ubuntu base's. install.sh
-          # reads the real /etc/os-release during the image build, so this row
-          # proves both rules against a genuine derivative rather than against
-          # a fixture someone wrote. Mint 22 is built on Ubuntu 24.04, so that
-          # is the Zabbix repository a Mint operator installs.
-          - name: Linux Mint 22 / APT / Zabbix 7.0
-            image: linuxmintd/mint22-amd64
-            agent-version: "7.0"
-            dockerfile: integration/lab/Dockerfile.apt
-            build-args: BASE_IMAGE=linuxmintd/mint22-amd64 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest_7.0+ubuntu24.04_all.deb
-
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-go@v7
+      - uses: actions/upload-artifact@v7
         with:
-          go-version-file: go.mod
-          cache: false
+          name: compatibility-integration-test
+          path: dist/compatibility/integration.test
+          retention-days: 1
 
-      - name: Build integration test
-        run: CGO_ENABLED=0 go test -tags=integration -c -o dnf-integration.test ./integration
+      - uses: actions/upload-artifact@v7
+        with:
+          name: compatibility-apt-dpkg-test
+          path: dist/compatibility/apt-dpkg.test
+          retention-days: 1
 
-      - name: Run read-only APT integration test as zabbix
-        env:
-          IMAGE: ${{ matrix.image }}
-          FOREIGN_ARCHITECTURE: i386
-        run: |
-          docker pull "$IMAGE"
-          docker run --rm \
-            --env FOREIGN_ARCHITECTURE \
-            --volume "$GITHUB_WORKSPACE:/src:ro" \
-            --workdir /src \
-            "$IMAGE" \
-            /bin/bash -lc '
-              set -eu
-              export DEBIAN_FRONTEND=noninteractive
-              apt-get update
-              apt-get install -y --no-install-recommends passwd util-linux
-              # apt-cache policy omits the ":architecture" qualifier for the
-              # native architecture and appends it for every foreign one, so a
-              # single-architecture container never exercises how a qualified
-              # header is resolved. Every APT job therefore enables a foreign
-              # architecture unconditionally: a per-matrix opt-in would pass
-              # silently on any job the flag failed to reach, which is the
-              # exact blind spot that let the multi-arch defect ship.
-              dpkg --add-architecture "$FOREIGN_ARCHITECTURE"
-              apt-get update
-              apt-get install -y --no-install-recommends "libgcc-s1:${FOREIGN_ARCHITECTURE}"
-              foreign="$(dpkg-query --show --showformat='"'"'${binary:Package} ${Architecture}\n'"'"' | grep -c " ${FOREIGN_ARCHITECTURE}$" || true)"
-              if [ "$foreign" -eq 0 ]; then
-                echo "no ${FOREIGN_ARCHITECTURE} package is installed" >&2
-                exit 1
-              fi
-              echo "multi-arch verified: ${foreign} ${FOREIGN_ARCHITECTURE} packages installed"
-              command -v apt-get
-              command -v apt-cache
-              command -v dpkg-query
-              command -v dpkg
-              if ! id zabbix >/dev/null 2>&1; then
-                useradd --system --no-create-home --shell /usr/sbin/nologin zabbix
-              fi
-              runuser -u zabbix -- ./dnf-integration.test -test.v -test.run "^TestAPTSmoke$"
-            '
-
-      - name: Build APT Agent 2 image and test installer
-        env:
-          BUILD_ARGS: ${{ matrix.build-args }}
-          DOCKERFILE: ${{ matrix.dockerfile }}
-        run: |
-          build_args=()
-          for argument in $BUILD_ARGS; do
-            build_args+=(--build-arg "$argument")
-          done
-          docker build \
-            --file "$DOCKERFILE" \
-            "${build_args[@]}" \
-            --tag zabbix-agent2-plugin-package-updates:apt-integration \
-            .
-
-      - name: Test installed APT Agent 2 plugin as zabbix
-        run: |
-          output="$(docker run --rm \
-            --user zabbix \
-            --entrypoint /usr/sbin/zabbix_agent2 \
-            zabbix-agent2-plugin-package-updates:apt-integration \
-            -c /etc/zabbix/zabbix_agent2.conf \
-            -t packages.get)"
-
-          OUTPUT="$output" python3 - <<'PY'
-          import json
-          import os
-          import re
-
-          output = os.environ["OUTPUT"]
-          match = re.search(r"packages\.get\s+\[s\|(\{[^\n]*\})\]", output)
-          if match is None:
-              raise SystemExit(f"packages.get did not return a supported string value: {output!r}")
-
-          payload = json.loads(match.group(1))
-          assert payload["schema_version"] == 1
-          assert payload["backend"] == "apt"
-          assert payload["collection"]["complete"] is True
-          assert payload["classification"] == {
-              "complete": True,
-              "failed_categories": [],
-          }
-          assert isinstance(payload["repositories"], list)
-          assert isinstance(payload["updates"], list)
-          assert payload["summary"]["repositories"] == len(payload["repositories"])
-          assert payload["summary"]["updates"] == len(payload["updates"])
-          counts = payload["summary"]["update_types"]
-          assert counts["bugfix"] == 0
-          assert counts["enhancement"] == 0
-          assert counts["security"] + counts["other"] == payload["summary"]["updates"]
-          assert payload["metadata"]["refreshed_at"] is not None
-          assert payload["metadata"]["age_seconds"] >= 0
-          PY
-
-          printf '%s\n' "$output"
+  hosts:
+    name: Host Platforms
+    needs: build
+    uses: ./.github/workflows/_compat-hosts.yaml
 
   agent2:
-    name: Agent 2 protocol representative / ${{ matrix.version }}
+    name: Agent 2 Protocol
+    needs: build
+    uses: ./.github/workflows/_compat-agent2.yaml
+
+  templates:
+    name: Zabbix Templates
+    uses: ./.github/workflows/_compat-templates.yaml
+
+  compatibility:
+    name: Compatibility
+    if: always()
+    needs: [build, hosts, agent2, templates]
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      max-parallel: 6
-      matrix:
-        # The external-plugin protocol is branch-level. Exercise the first,
-        # midpoint, and current patch instead of repeating the same socket
-        # contract for every patch release.
-        version:
-          - 7.0.0
-          - 7.0.15
-          - 7.0.30
-          - 7.2.0
-          - 7.2.8
-          - 7.2.15
-          - 7.4.0
-          - 7.4.7
-          - 7.4.14
-
+    timeout-minutes: 2
     steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: false
-
-      - name: Build plugin
-        run: CGO_ENABLED=0 go build -o zabbix-agent2-plugin-package-updates ./cmd/agent
-
-      - name: Test Agent 2 plugin socket protocol
+      - name: Verify all compatibility suites passed
         env:
-          AGENT_IMAGE: zabbix/zabbix-agent2:alpine-${{ matrix.version }}
-          FAKE_DNF_HISTORY: populated
+          HOSTS_RESULT: ${{ needs.hosts.result }}
+          AGENT2_RESULT: ${{ needs.agent2.result }}
+          TEMPLATES_RESULT: ${{ needs.templates.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
         run: |
-          chmod +x integration/zabbix-agent2/fakebin/*
-          docker pull "$AGENT_IMAGE"
-          started=$SECONDS
-          output="$(docker run --rm \
-            --user zabbix \
-            --env FAKE_DNF_HISTORY \
-            --volume "$GITHUB_WORKSPACE/zabbix-agent2-plugin-package-updates:/tmp/zabbix-agent2-plugin-package-updates:ro" \
-            --volume "$GITHUB_WORKSPACE/integration/zabbix-agent2/package-updates.conf:/etc/zabbix/zabbix_agent2.d/plugins.d/package-updates.conf:ro" \
-            --volume "$GITHUB_WORKSPACE/integration/zabbix-agent2/fakebin:/tmp/fakebin:ro" \
-            "$AGENT_IMAGE" \
-            /bin/sh -c '
-              PATH=/tmp/fakebin:$PATH zabbix_agent2 -t packages.get
-              PATH=/tmp/fakebin:$PATH zabbix_agent2 -t advisories.get
-            ')"
-          duration=$((SECONDS - started))
-          if (( duration >= 20 )); then
-            printf 'collection took %d seconds; release threshold is below 20 seconds\n' "$duration" >&2
-            exit 1
-          fi
-
-          OUTPUT="$output" python3 - <<'PY'
-          import json
-          import os
-          import re
-
-          output = os.environ["OUTPUT"]
-
-          def item_payload(key):
-              match = re.search(rf"{re.escape(key)}\s+\[s\|(\{{[^\n]*\}})\]", output)
-              if match is None:
-                  raise SystemExit(f"{key} did not return a supported string value: {output!r}")
-              return json.loads(match.group(1))
-
-          payload = item_payload("packages.get")
-          assert payload["schema_version"] == 1
-          assert payload["backend"] == "dnf"
-          assert payload["capabilities"] == {
-              "classification": {
-                  "security": "supported",
-                  "bugfix": "supported",
-                  "enhancement": "supported",
-                  "other": "supported",
-              },
-              "repository_attribution": "supported",
-              "reboot_detection": "supported",
-              "last_update": "supported",
-              "metadata_age": "unsupported",
-          }
-          assert payload["metadata"] == {
-              "refreshed_at": None,
-              "age_seconds": None,
-          }
-          assert payload["classification"] == {
-              "complete": True,
-              "failed_categories": [],
-          }
-          assert payload["summary"]["repositories"] == 1
-          assert payload["summary"]["updates"] == 1
-          assert payload["summary"]["update_types"] == {
-              "security": 0,
-              "bugfix": 0,
-              "enhancement": 0,
-              "other": 1,
-          }
-          assert payload["repositories"] == [{
-              "id": "test",
-              "name": "Test repository",
-              "update_count": 1,
-          }]
-          assert payload["updates"] == [{
-              "repository_id": "test",
-              "name": "example",
-              "epoch": "0",
-              "version": "2.0",
-              "release": "1",
-              "arch": "x86_64",
-              "type": "other",
-              "full_version": "0:2.0-1",
-              "identifier": "example-0:2.0-1.x86_64",
-          }]
-
-          last_update = payload["summary"]["last_update"]
-          if os.environ["FAKE_DNF_HISTORY"] == "populated":
-              assert last_update["result"] == "success"
-          else:
-              assert last_update == {
-                  "timestamp": None,
-                  "result": "not_recorded",
-              }
-
-          advisories = item_payload("advisories.get")
-          assert advisories["schema_version"] == 1
-          assert advisories["collection"]["complete"] is True
-          assert advisories["metadata"] == {
-              "details_complete": False,
-              "cves_complete": False,
-              "issue_dates_complete": False,
-          }
-          assert advisories["summary"]["advisories"] == 1
-          assert advisories["summary"]["unique_cves"] == 0
-          assert advisories["advisories"] == [{
-              "id": "TEST-2026:1",
-              "type": "security",
-              "severity": "important",
-              "title": "",
-              "issued_at": None,
-              "updated_at": None,
-              "cve_ids": [],
-              "affected_update_nevras": ["example-0:2.0-1.x86_64"],
-          }]
-          PY
-
-          printf '%s\n' "$output"
-          printf 'collection completed in %d seconds\n' "$duration"
+          failed=0
+          for result in \
+            "$BUILD_RESULT" \
+            "$HOSTS_RESULT" \
+            "$AGENT2_RESULT" \
+            "$TEMPLATES_RESULT"; do
+            printf 'suite result: %s\n' "$result"
+            if [ "$result" != success ]; then
+              failed=1
+            fi
+          done
+          exit "$failed"

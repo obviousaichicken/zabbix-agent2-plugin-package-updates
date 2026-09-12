@@ -1,0 +1,30 @@
+name: Compatibility / Zabbix Templates
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  template:
+    name: Template / Zabbix ${{ matrix.zabbix }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        zabbix: ['7.0', '7.2', '7.4']
+    env:
+      ZBX_TEST_VERSION: ${{ matrix.zabbix }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Test template imports, preprocessing, discovery, and triggers
+        run: integration/ci/test-template.sh

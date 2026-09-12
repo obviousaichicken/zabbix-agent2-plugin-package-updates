@@ -24,9 +24,6 @@ It supports:
 * Debian 11, 12, and 13
 * Ubuntu 22.04, 24.04, 25.04, 25.10, and 26.04
 * Linux Mint 21 and 22
-* Pop!_OS 22.04 and 24.04
-
-Debian 11 is oldoldstable, and Ubuntu 25.04 and 25.10 are past their end of standard support. They are accepted and tested, but a host still on them no longer receives the updates this plugin is there to report.
 
 Other Debian and RHEL derivatives are detected from `ID_LIKE` and work without being listed here. See [Derivatives](#derivatives).
 
@@ -140,7 +137,7 @@ Backend detection is automatic. Most installations do not need anything beyond t
 
 The backend defaults to `auto`. The plugin reads `/etc/os-release`: it matches `ID` first and falls back to `ID_LIKE`, so Debian and Ubuntu derivatives are detected as APT and RHEL derivatives as DNF. Startup fails if the distribution is unsupported, if `ID_LIKE` names both families, or if the required commands are missing. The plugin itself does not check the release version at all.
 
-The installer applies the same backend rule and additionally checks `VERSION_ID`, but only where this project has something to check against: an exact list for Debian, Ubuntu, Linux Mint and Pop!_OS, and a floor of major version 8 for Fedora, RHEL, CentOS Stream, Rocky Linux, AlmaLinux and Oracle Linux. A Fedora older than the two listed above therefore passes the installer even though it is not tested. Anything else reached through `ID_LIKE` numbers its releases on its own schedule, so the installer prints a note saying the version was not checked and continues.
+The installer applies the same backend rule and additionally checks `VERSION_ID`, but only where this project has something to check against: an exact list for Debian, Ubuntu and Linux Mint, and a floor of major version 8 for Fedora, RHEL, CentOS Stream, Rocky Linux, AlmaLinux and Oracle Linux. A Fedora older than the two listed above therefore passes the installer even though it is not tested. Anything else reached through `ID_LIKE` numbers its releases on its own schedule, so the installer prints a note saying the version was not checked and continues.
 
 Changing `Plugins.PackageUpdates.Backend` takes effect on an agent configuration reload; a full restart is not required.
 
@@ -156,12 +153,12 @@ Valid values are `auto`, `dnf`, and `apt`. A forced backend skips distribution-f
 
 ### Derivatives
 
-Because detection falls back to `ID_LIKE`, distributions this project has never tested still work. On the APT side that covers Linux Mint, LMDE, Pop!_OS, Zorin OS, elementary OS, Kali, Devuan and Raspberry Pi OS; on the DNF side Amazon Linux 2023, Nobara, EuroLinux and the other RHEL rebuilds. Anything whose `ID_LIKE` names neither family, such as openSUSE or Arch, is refused at startup rather than guessed at.
+Because detection falls back to `ID_LIKE`, distributions this project has never tested still work. On the APT side that covers LMDE, Pop!_OS, Zorin OS, elementary OS, Kali, Devuan and Raspberry Pi OS; on the DNF side Amazon Linux 2023, Nobara, EuroLinux and the other RHEL rebuilds. Anything whose `ID_LIKE` names neither family, such as openSUSE or Arch, is refused at startup rather than guessed at.
 
-Two things are worth knowing before relying on any of them:
+Two things are worth knowing before relying on one:
 
-* Linux Mint is the only one in the test matrix. Every other derivative, Pop!_OS included, is covered by the detection and version rules alone, not by an end-to-end run on that distribution.
-* Security classification recognizes the official Debian and Ubuntu security pockets only. A derivative that serves its own security updates from its own repository, such as Devuan, Kali or Raspberry Pi OS, reports those updates as `other`, so a security count of zero on such a host means "none recognized", not "none pending". Mint, Pop!_OS, Zorin and elementary keep the Ubuntu pockets for the base system, so those are still classified correctly.
+* None of them is in the test matrix, and the installer does not check their versions. It accepts any release with a note saying the version was not checked, because their numbering is their own. They are covered by the detection rule and nothing else.
+* Security classification recognizes the official Debian and Ubuntu security pockets only. A derivative that serves its own security updates from its own repository, such as Devuan, Kali or Raspberry Pi OS, reports those updates as `other`, so a security count of zero on such a host means "none recognized", not "none pending". Pop!_OS, Zorin and elementary keep the Ubuntu pockets for the base system, so those are still classified correctly.
 
 ### Reboot detection
 

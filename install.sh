@@ -119,15 +119,6 @@ supported_version_check() {
 		esac
 		printf 'Ubuntu 22.04, 24.04, 25.04, 25.10, or 26.04\n'
 		;;
-	pop)
-		# Pop!_OS carries Ubuntu's VERSION_ID unchanged and System76 builds
-		# only on LTS bases, so the list is Ubuntu's LTS releases. Add a
-		# newer one here when System76 ships it, not in anticipation.
-		case "$check_version" in
-		22.04 | 24.04) return 0 ;;
-		esac
-		printf 'Pop!_OS 22.04 or 24.04\n'
-		;;
 	linuxmint)
 		# Mint numbers its releases independently of the Ubuntu base it is
 		# built from: 21.x is Ubuntu 22.04 and 22.x is Ubuntu 24.04. Point

@@ -179,11 +179,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Bullseye's indexes are still on deb.debian.org but the pool files
+          # behind them are being pruned: an install off the default sources
+          # 404s on a package apt-get update just advertised. archive.debian.org
+          # is where a Debian 11 host has to point now, so that is what this
+          # row builds against.
           - name: Debian 11 / APT / Zabbix 7.0
             image: debian:11
             agent-version: "7.0"
             dockerfile: .dev/Dockerfile.apt
-            build-args: BASE_IMAGE=debian:11 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.0/debian/pool/main/z/zabbix-release/zabbix-release_latest_7.0+debian11_all.deb
+            build-args: BASE_IMAGE=debian:11 DEBIAN_ARCHIVE_SUITE=bullseye ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.0/debian/pool/main/z/zabbix-release/zabbix-release_latest_7.0+debian11_all.deb
           - name: Debian 12 / APT / Zabbix 7.0
             image: debian:12
             agent-version: "7.0"

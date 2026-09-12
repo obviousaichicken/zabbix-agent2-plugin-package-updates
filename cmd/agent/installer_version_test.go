@@ -49,10 +49,6 @@ func TestInstallerVersionGate(t *testing.T) {
 		{name: "ubuntu 25.10", id: "ubuntu", version: "25.10", status: supported},
 		{name: "ubuntu 26.04", id: "ubuntu", version: "26.04", status: supported},
 		{name: "ubuntu 20.04", id: "ubuntu", version: "20.04", status: unsupported},
-		{name: "pop 22.04", id: "pop", version: "22.04", status: supported},
-		{name: "pop 24.04", id: "pop", version: "24.04", status: supported},
-		{name: "pop 26.04 has not shipped", id: "pop", version: "26.04", status: unsupported},
-		{name: "pop 20.04", id: "pop", version: "20.04", status: unsupported},
 		// Mint point releases keep their Ubuntu base, so the major decides.
 		{name: "mint 21", id: "linuxmint", version: "21", status: supported},
 		{name: "mint 21.3", id: "linuxmint", version: "21.3", status: supported},
@@ -69,6 +65,7 @@ func TestInstallerVersionGate(t *testing.T) {
 		// Reached through ID_LIKE. These number their releases on their own
 		// schedule, so there is nothing to check the version against.
 		{name: "kali", id: "kali", version: "2026.1", status: notGated},
+		{name: "pop", id: "pop", version: "24.04", status: notGated},
 		{name: "amazon linux 2023", id: "amzn", version: "2023", status: notGated},
 		{name: "devuan", id: "devuan", version: "5", status: notGated},
 		{name: "lmde", id: "lmde", version: "6", status: notGated},

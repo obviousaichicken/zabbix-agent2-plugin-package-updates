@@ -1,4 +1,4 @@
-package main
+package templates_test
 
 import (
 	"bufio"
@@ -13,7 +13,7 @@ var templateUUIDPattern = regexp.MustCompile(`^\s*- uuid: ([0-9a-f]{32})$`)
 func TestCombinedTemplateUUIDBaseline(t *testing.T) {
 	t.Parallel()
 
-	templateData, err := os.ReadFile("../../template-package-updates-by-zabbix-agent2.yaml")
+	templateData, err := os.ReadFile(templateFile)
 	if err != nil {
 		t.Fatalf("read combined template: %v", err)
 	}

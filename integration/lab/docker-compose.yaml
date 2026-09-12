@@ -61,7 +61,7 @@ services:
       ZBX_CACHE_SYNC_WAIT: ${ZBX_CACHE_SYNC_WAIT:-15}
     volumes:
       - ./bootstrap.py:/bootstrap/bootstrap.py:ro
-      - ../template-package-updates-by-zabbix-agent2.yaml:/bootstrap/template-package-updates-by-zabbix-agent2.yaml:ro
+      - ../../templates/template-package-updates-by-zabbix-agent2.yaml:/bootstrap/template-package-updates-by-zabbix-agent2.yaml:ro
     command: [ "python", "/bootstrap/bootstrap.py" ]
     depends_on:
       - zbx70_web
@@ -92,8 +92,8 @@ services:
 
   zbx70_ubi8_agent:
     build:
-      context: ..
-      dockerfile: .dev/Dockerfile.ubi
+      context: ../..
+      dockerfile: integration/lab/Dockerfile.ubi
       args:
         UBI_VERSION: '8'
         UBI_TAG: '8.8'
@@ -107,8 +107,8 @@ services:
 
   zbx70_ubi9_agent:
     build:
-      context: ..
-      dockerfile: .dev/Dockerfile.ubi
+      context: ../..
+      dockerfile: integration/lab/Dockerfile.ubi
       args:
         UBI_VERSION: '9'
         UBI_TAG: '9.4'
@@ -122,12 +122,12 @@ services:
 
   zbx70_ubi9_agent_active:
     build:
-      context: ..
-      dockerfile: .dev/Dockerfile.ubi
+      context: ../..
+      dockerfile: integration/lab/Dockerfile.ubi
       args:
         UBI_VERSION: '9'
         UBI_TAG: '9.4'
-        AGENT_CONFIG: .dev/zabbix_agent2_active.conf
+        AGENT_CONFIG: integration/lab/zabbix_agent2_active.conf
     container_name: zbx70_ubi9_agent_active
     hostname: zbx70-ubi9-agent-active
     depends_on:
@@ -138,8 +138,8 @@ services:
 
   zbx70_ubi10_agent:
     build:
-      context: ..
-      dockerfile: .dev/Dockerfile.ubi
+      context: ../..
+      dockerfile: integration/lab/Dockerfile.ubi
       args:
         UBI_VERSION: '10'
         UBI_TAG: '10.0'
@@ -153,8 +153,8 @@ services:
 
   zbx70_fedora43_agent:
     build:
-      context: ..
-      dockerfile: .dev/Dockerfile.dnf
+      context: ../..
+      dockerfile: integration/lab/Dockerfile.dnf
       args:
         BASE_IMAGE: fedora:43
         ZABBIX_RHEL_VERSION: '10'
@@ -168,8 +168,8 @@ services:
 
   zbx70_fedora44_agent:
     build:
-      context: ..
-      dockerfile: .dev/Dockerfile.dnf
+      context: ../..
+      dockerfile: integration/lab/Dockerfile.dnf
       args:
         BASE_IMAGE: fedora:44
         ZABBIX_RHEL_VERSION: '10'
@@ -183,12 +183,12 @@ services:
 
   zbx70_fedora44_agent_active:
     build:
-      context: ..
-      dockerfile: .dev/Dockerfile.dnf
+      context: ../..
+      dockerfile: integration/lab/Dockerfile.dnf
       args:
         BASE_IMAGE: fedora:44
         ZABBIX_RHEL_VERSION: '10'
-        AGENT_CONFIG: .dev/zabbix_agent2_active.conf
+        AGENT_CONFIG: integration/lab/zabbix_agent2_active.conf
     container_name: zbx70_fedora44_agent_active
     hostname: zbx70-fedora44-agent-active
     depends_on:
@@ -199,8 +199,8 @@ services:
 
   zbx70_rocky8_agent:
     build:
-      context: ..
-      dockerfile: .dev/Dockerfile.dnf
+      context: ../..
+      dockerfile: integration/lab/Dockerfile.dnf
       args:
         BASE_IMAGE: rockylinux/rockylinux:8.8
         ZABBIX_RHEL_VERSION: '8'
@@ -214,8 +214,8 @@ services:
 
   zbx70_rocky9_agent:
     build:
-      context: ..
-      dockerfile: .dev/Dockerfile.dnf
+      context: ../..
+      dockerfile: integration/lab/Dockerfile.dnf
       args:
         BASE_IMAGE: rockylinux/rockylinux:9
         ZABBIX_RHEL_VERSION: '9'
@@ -229,8 +229,8 @@ services:
 
   zbx70_rocky10_agent:
     build:
-      context: ..
-      dockerfile: .dev/Dockerfile.dnf
+      context: ../..
+      dockerfile: integration/lab/Dockerfile.dnf
       args:
         BASE_IMAGE: rockylinux/rockylinux:10
         ZABBIX_RHEL_VERSION: '10'
@@ -244,8 +244,8 @@ services:
 
   zbx70_alma9_agent:
     build:
-      context: ..
-      dockerfile: .dev/Dockerfile.dnf
+      context: ../..
+      dockerfile: integration/lab/Dockerfile.dnf
       args:
         BASE_IMAGE: almalinux:9
         ZABBIX_RHEL_VERSION: '9'
@@ -259,8 +259,8 @@ services:
 
   zbx70_alma10_agent:
     build:
-      context: ..
-      dockerfile: .dev/Dockerfile.dnf
+      context: ../..
+      dockerfile: integration/lab/Dockerfile.dnf
       args:
         BASE_IMAGE: almalinux:10
         ZABBIX_RHEL_VERSION: '10'
@@ -274,8 +274,8 @@ services:
 
   zbx70_centos9_agent:
     build:
-      context: ..
-      dockerfile: .dev/Dockerfile.dnf
+      context: ../..
+      dockerfile: integration/lab/Dockerfile.dnf
       args:
         BASE_IMAGE: quay.io/centos/centos:stream9
         ZABBIX_RHEL_VERSION: '9'
@@ -289,8 +289,8 @@ services:
 
   zbx70_centos10_agent:
     build:
-      context: ..
-      dockerfile: .dev/Dockerfile.dnf
+      context: ../..
+      dockerfile: integration/lab/Dockerfile.dnf
       args:
         BASE_IMAGE: quay.io/centos/centos:stream10
         ZABBIX_RHEL_VERSION: '10'
@@ -304,8 +304,8 @@ services:
 
   zbx70_debian13_agent:
     build:
-      context: ..
-      dockerfile: .dev/Dockerfile.apt
+      context: ../..
+      dockerfile: integration/lab/Dockerfile.apt
       args:
         BASE_IMAGE: debian:13
         ZABBIX_RELEASE_URL: https://repo.zabbix.com/zabbix/7.0/debian/pool/main/z/zabbix-release/zabbix-release_latest_7.0+debian13_all.deb
@@ -319,8 +319,8 @@ services:
 
   zbx70_oracle8_agent:
     build:
-      context: ..
-      dockerfile: .dev/Dockerfile.dnf
+      context: ../..
+      dockerfile: integration/lab/Dockerfile.dnf
       args:
         BASE_IMAGE: oraclelinux:8
         ZABBIX_RHEL_VERSION: '8'
@@ -334,8 +334,8 @@ services:
 
   zbx70_oracle9_agent:
     build:
-      context: ..
-      dockerfile: .dev/Dockerfile.dnf
+      context: ../..
+      dockerfile: integration/lab/Dockerfile.dnf
       args:
         BASE_IMAGE: oraclelinux:9
         ZABBIX_RHEL_VERSION: '9'
@@ -349,8 +349,8 @@ services:
 
   zbx70_oracle10_agent:
     build:
-      context: ..
-      dockerfile: .dev/Dockerfile.dnf
+      context: ../..
+      dockerfile: integration/lab/Dockerfile.dnf
       args:
         BASE_IMAGE: oraclelinux:10
         ZABBIX_RHEL_VERSION: '10'
@@ -364,8 +364,8 @@ services:
 
   zbx70_ubuntu2204_agent:
     build:
-      context: ..
-      dockerfile: .dev/Dockerfile.apt
+      context: ../..
+      dockerfile: integration/lab/Dockerfile.apt
       args:
         BASE_IMAGE: ubuntu:22.04
         ZABBIX_RELEASE_URL: https://repo.zabbix.com/zabbix/7.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest_7.0+ubuntu22.04_all.deb
@@ -379,8 +379,8 @@ services:
 
   zbx70_ubuntu2404_agent:
     build:
-      context: ..
-      dockerfile: .dev/Dockerfile.apt
+      context: ../..
+      dockerfile: integration/lab/Dockerfile.apt
       args:
         BASE_IMAGE: ubuntu:24.04
         ZABBIX_RELEASE_URL: https://repo.zabbix.com/zabbix/7.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest_7.0+ubuntu24.04_all.deb
@@ -394,8 +394,8 @@ services:
 
   zbx70_ubuntu2604_agent:
     build:
-      context: ..
-      dockerfile: .dev/Dockerfile.apt
+      context: ../..
+      dockerfile: integration/lab/Dockerfile.apt
       args:
         BASE_IMAGE: ubuntu:26.04
         ZABBIX_RELEASE_URL: https://repo.zabbix.com/zabbix/7.4/release/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest_7.4+ubuntu26.04_all.deb

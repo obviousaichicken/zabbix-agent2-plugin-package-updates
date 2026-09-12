@@ -1,33 +1,27 @@
 {
-  // Editor
-  "editor.fontFamily": "Jetbrains Mono",
-  "editor.fontSize": 14,
-  "editor.fontLigatures": true,
-  "editor.formatOnSave": true,
-  "editor.tabSize": 2,
-  "editor.suggest.showFolders": false,
-  "explorer.compactFolders": false,
-  "editor.linkedEditing": true,
-  "editor.quickSuggestions": {
-    "strings": "on"
-  },
   // File hygiene
   "files.insertFinalNewline": true,
   "files.trimFinalNewlines": true,
   "files.trimTrailingWhitespace": true,
-  // Workbench
-  "workbench.activityBar.compact": true,
-  // Files
   "files.eol": "\n",
   // Go
   "go.formatTool": "default",
   "go.lintTool": "golangci-lint-v2",
   "go.lintOnSave": "package",
   "go.lintFlags": [
-    "--path-mode=abs"
+    "--path-mode=abs",
+    "--fast-only",
+    "--concurrency=4"
   ],
   "gopls": {
-    "buildFlags": ["-tags=integration"],
+    "buildFlags": [
+      "-tags=integration"
+    ],
     "formatting.gofumpt": true
   },
+  // Formatting
+  "[go]": {
+    "editor.defaultFormatter": "golang.go",
+    "editor.formatOnSave": true
+  }
 }

@@ -16,7 +16,7 @@ RUN CGO_ENABLED=0 go build -o /out/zabbix-agent2-plugin-package-updates ./cmd/ag
 FROM registry.access.redhat.com/ubi${UBI_VERSION}/ubi:${UBI_TAG}
 
 ARG UBI_VERSION
-ARG AGENT_CONFIG=.dev/zabbix_agent2.conf
+ARG AGENT_CONFIG=integration/lab/zabbix_agent2.conf
 ARG ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.0/rhel/${UBI_VERSION}/x86_64/zabbix-release-latest.el${UBI_VERSION}.noarch.rpm
 
 RUN set -eux; \
@@ -32,9 +32,9 @@ RUN set -eux; \
 ENV HOME=/var/lib/zabbix
 
 COPY ${AGENT_CONFIG} /etc/zabbix/zabbix_agent2.conf
-COPY package-updates.conf /tmp/release/package-updates.conf
+COPY configs/package-updates.conf /tmp/release/package-updates.conf
 COPY install.sh /tmp/install.sh
-COPY .dev/installer-test/dnf /tmp/install-test-bin/dnf
+COPY integration/installer/dnf /tmp/install-test-bin/dnf
 COPY --from=builder /out/ /tmp/release/
 
 # Put a validating DNF shim in front of the real binary so every image build

@@ -3,16 +3,18 @@
 !go.mod
 !go.sum
 !install.sh
-!package-updates.conf
+!configs/
+!configs/package-updates.conf
 
 !cmd/
 !cmd/**
 !internal/
 !internal/**
 
-!.dev/
-!.dev/zabbix_agent2.conf
-!.dev/zabbix_agent2_active.conf
-!.dev/Dockerfile.apt
-!.dev/installer-test/
-!.dev/installer-test/dnf
+!integration/
+!integration/lab/
+!integration/lab/zabbix_agent2.conf
+!integration/lab/zabbix_agent2_active.conf
+!integration/lab/Dockerfile.apt
+!integration/installer/
+!integration/installer/dnf

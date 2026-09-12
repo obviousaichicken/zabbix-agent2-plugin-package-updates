@@ -180,7 +180,7 @@ check_dnf_access() {
 	# collector's --assumeno: this preflight is the first DNF run as the
 	# unprivileged zabbix user, on a host whose repository GPG keys may not be
 	# imported yet, and only --assumeyes lets that import happen without a
-	# prompt. .dev/installer-test/dnf asserts it on every image build.
+	# prompt. integration/installer/dnf asserts it on every image build.
 	#
 	# The --setopt override does match the collector, so a repository that is
 	# unreachable fails here rather than silently passing preflight and

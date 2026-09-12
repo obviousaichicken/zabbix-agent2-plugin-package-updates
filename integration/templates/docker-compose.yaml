@@ -1,0 +1,36 @@
+services:
+  database:
+    image: mariadb:11.4
+    environment:
+      MARIADB_DATABASE: zabbix
+      MARIADB_USER: zabbix
+      MARIADB_PASSWORD: zabbix
+      MARIADB_ROOT_PASSWORD: zabbix
+    tmpfs:
+      - /var/lib/mysql
+
+  server:
+    image: zabbix/zabbix-server-mysql:alpine-7.0-latest
+    environment:
+      DB_SERVER_HOST: database
+      MYSQL_DATABASE: zabbix
+      MYSQL_USER: zabbix
+      MYSQL_PASSWORD: zabbix
+      MYSQL_ROOT_PASSWORD: zabbix
+      ZBX_CACHEUPDATEFREQUENCY: '1'
+    depends_on:
+      - database
+
+  web:
+    image: zabbix/zabbix-web-nginx-mysql:alpine-7.0-latest
+    environment:
+      ZBX_SERVER_HOST: server
+      DB_SERVER_HOST: database
+      MYSQL_DATABASE: zabbix
+      MYSQL_USER: zabbix
+      MYSQL_PASSWORD: zabbix
+      MYSQL_ROOT_PASSWORD: zabbix
+    ports:
+      - '127.0.0.1:${ZBX_TEST_PORT:-17070}:8080'
+    depends_on:
+      - server

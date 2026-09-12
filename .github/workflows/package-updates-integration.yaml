@@ -26,75 +26,75 @@ jobs:
         include:
           - name: UBI 8 / DNF
             image: registry.access.redhat.com/ubi8/ubi:latest
-            dockerfile: .dev/Dockerfile.ubi
+            dockerfile: integration/lab/Dockerfile.ubi
             build-args: UBI_VERSION=8 UBI_TAG=latest
           - name: UBI 9 / DNF
             image: registry.access.redhat.com/ubi9/ubi:latest
-            dockerfile: .dev/Dockerfile.ubi
+            dockerfile: integration/lab/Dockerfile.ubi
             build-args: UBI_VERSION=9 UBI_TAG=latest
           - name: UBI 9 / DNF / Zabbix 7.4
             image: registry.access.redhat.com/ubi9/ubi:latest
-            dockerfile: .dev/Dockerfile.ubi
+            dockerfile: integration/lab/Dockerfile.ubi
             build-args: UBI_VERSION=9 UBI_TAG=latest ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.4/release/rhel/9/noarch/zabbix-release-latest.el9.noarch.rpm
           - name: UBI 10 / DNF
             image: registry.access.redhat.com/ubi10/ubi:latest
-            dockerfile: .dev/Dockerfile.ubi
+            dockerfile: integration/lab/Dockerfile.ubi
             build-args: UBI_VERSION=10 UBI_TAG=latest
           - name: Fedora 43 / DNF5
             image: fedora:43
-            dockerfile: .dev/Dockerfile.dnf
+            dockerfile: integration/lab/Dockerfile.dnf
             build-args: BASE_IMAGE=fedora:43 ZABBIX_RHEL_VERSION=10
           - name: Fedora 44 / DNF5
             image: fedora:44
-            dockerfile: .dev/Dockerfile.dnf
+            dockerfile: integration/lab/Dockerfile.dnf
             build-args: BASE_IMAGE=fedora:44 ZABBIX_RHEL_VERSION=10
           - name: Fedora 44 / DNF5 / Zabbix 7.4
             image: fedora:44
-            dockerfile: .dev/Dockerfile.dnf
+            dockerfile: integration/lab/Dockerfile.dnf
             build-args: BASE_IMAGE=fedora:44 ZABBIX_RHEL_VERSION=10 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.4/release/rhel/10/noarch/zabbix-release-latest.el10.noarch.rpm
           - name: Rocky Linux 8 / DNF4
             image: rockylinux/rockylinux:8
-            dockerfile: .dev/Dockerfile.dnf
+            dockerfile: integration/lab/Dockerfile.dnf
             build-args: BASE_IMAGE=rockylinux/rockylinux:8 ZABBIX_RHEL_VERSION=8
           - name: Rocky Linux 9 / DNF
             image: rockylinux/rockylinux:9
-            dockerfile: .dev/Dockerfile.dnf
+            dockerfile: integration/lab/Dockerfile.dnf
             build-args: BASE_IMAGE=rockylinux/rockylinux:9 ZABBIX_RHEL_VERSION=9
           - name: Rocky Linux 10 / DNF
             image: rockylinux/rockylinux:10
-            dockerfile: .dev/Dockerfile.dnf
+            dockerfile: integration/lab/Dockerfile.dnf
             build-args: BASE_IMAGE=rockylinux/rockylinux:10 ZABBIX_RHEL_VERSION=10
           - name: AlmaLinux 8 / DNF4
             image: almalinux:8
-            dockerfile: .dev/Dockerfile.dnf
+            dockerfile: integration/lab/Dockerfile.dnf
             build-args: BASE_IMAGE=almalinux:8 ZABBIX_RHEL_VERSION=8
           - name: AlmaLinux 9 / DNF
             image: almalinux:9
-            dockerfile: .dev/Dockerfile.dnf
+            dockerfile: integration/lab/Dockerfile.dnf
             build-args: BASE_IMAGE=almalinux:9 ZABBIX_RHEL_VERSION=9
           - name: AlmaLinux 10 / DNF
             image: almalinux:10
-            dockerfile: .dev/Dockerfile.dnf
+            dockerfile: integration/lab/Dockerfile.dnf
             build-args: BASE_IMAGE=almalinux:10 ZABBIX_RHEL_VERSION=10
           - name: Oracle Linux 8 / DNF4
             image: oraclelinux:8
-            dockerfile: .dev/Dockerfile.dnf
+            dockerfile: integration/lab/Dockerfile.dnf
             build-args: BASE_IMAGE=oraclelinux:8 ZABBIX_RHEL_VERSION=8
           - name: Oracle Linux 9 / DNF
             image: oraclelinux:9
-            dockerfile: .dev/Dockerfile.dnf
+            dockerfile: integration/lab/Dockerfile.dnf
             build-args: BASE_IMAGE=oraclelinux:9 ZABBIX_RHEL_VERSION=9
           - name: Oracle Linux 10 / DNF
             image: oraclelinux:10
-            dockerfile: .dev/Dockerfile.dnf
+            dockerfile: integration/lab/Dockerfile.dnf
             build-args: BASE_IMAGE=oraclelinux:10 ZABBIX_RHEL_VERSION=10
           - name: CentOS Stream 9 / DNF
             image: quay.io/centos/centos:stream9
-            dockerfile: .dev/Dockerfile.dnf
+            dockerfile: integration/lab/Dockerfile.dnf
             build-args: BASE_IMAGE=quay.io/centos/centos:stream9 ZABBIX_RHEL_VERSION=9
           - name: CentOS Stream 10 / DNF
             image: quay.io/centos/centos:stream10
-            dockerfile: .dev/Dockerfile.dnf
+            dockerfile: integration/lab/Dockerfile.dnf
             build-args: BASE_IMAGE=quay.io/centos/centos:stream10 ZABBIX_RHEL_VERSION=10
 
     steps:
@@ -182,22 +182,22 @@ jobs:
           - name: Debian 12 / APT / Zabbix 7.0
             image: debian:12
             agent-version: "7.0"
-            dockerfile: .dev/Dockerfile.apt
+            dockerfile: integration/lab/Dockerfile.apt
             build-args: BASE_IMAGE=debian:12 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.0/debian/pool/main/z/zabbix-release/zabbix-release_latest_7.0+debian12_all.deb
           - name: Debian 13 / APT / Zabbix 7.0
             image: debian:13
             agent-version: "7.0"
-            dockerfile: .dev/Dockerfile.apt
+            dockerfile: integration/lab/Dockerfile.apt
             build-args: BASE_IMAGE=debian:13 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.0/debian/pool/main/z/zabbix-release/zabbix-release_latest_7.0+debian13_all.deb
           - name: Ubuntu 22.04 / APT / Zabbix 7.0
             image: ubuntu:22.04
             agent-version: "7.0"
-            dockerfile: .dev/Dockerfile.apt
+            dockerfile: integration/lab/Dockerfile.apt
             build-args: BASE_IMAGE=ubuntu:22.04 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest_7.0+ubuntu22.04_all.deb
           - name: Ubuntu 24.04 / APT / Zabbix 7.0
             image: ubuntu:24.04
             agent-version: "7.0"
-            dockerfile: .dev/Dockerfile.apt
+            dockerfile: integration/lab/Dockerfile.apt
             build-args: BASE_IMAGE=ubuntu:24.04 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest_7.0+ubuntu24.04_all.deb
           # Zabbix publishes a repository only for the releases it builds for,
           # which excludes interim Ubuntu releases. These two therefore leave
@@ -206,17 +206,17 @@ jobs:
           - name: Ubuntu 25.04 / APT / Zabbix 7.0
             image: ubuntu:25.04
             agent-version: "7.0"
-            dockerfile: .dev/Dockerfile.apt
+            dockerfile: integration/lab/Dockerfile.apt
             build-args: BASE_IMAGE=ubuntu:25.04
           - name: Ubuntu 25.10 / APT / Zabbix 7.0
             image: ubuntu:25.10
             agent-version: "7.0"
-            dockerfile: .dev/Dockerfile.apt
+            dockerfile: integration/lab/Dockerfile.apt
             build-args: BASE_IMAGE=ubuntu:25.10
           - name: Ubuntu 26.04 / APT / Zabbix 7.4
             image: ubuntu:26.04
             agent-version: "7.4"
-            dockerfile: .dev/Dockerfile.apt
+            dockerfile: integration/lab/Dockerfile.apt
             build-args: BASE_IMAGE=ubuntu:26.04 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.4/release/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest_7.4+ubuntu26.04_all.deb
           # Linux Mint is reached through ID_LIKE rather than ID, and its
           # VERSION_ID is Mint's own rather than the Ubuntu base's. install.sh
@@ -227,7 +227,7 @@ jobs:
           - name: Linux Mint 22 / APT / Zabbix 7.0
             image: linuxmintd/mint22-amd64
             agent-version: "7.0"
-            dockerfile: .dev/Dockerfile.apt
+            dockerfile: integration/lab/Dockerfile.apt
             build-args: BASE_IMAGE=linuxmintd/mint22-amd64 ZABBIX_RELEASE_URL=https://repo.zabbix.com/zabbix/7.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest_7.0+ubuntu24.04_all.deb
 
     steps:
@@ -377,15 +377,15 @@ jobs:
           AGENT_IMAGE: zabbix/zabbix-agent2:alpine-${{ matrix.version }}
           FAKE_DNF_HISTORY: populated
         run: |
-          chmod +x .github/ci/zabbix-agent2/fakebin/*
+          chmod +x integration/zabbix-agent2/fakebin/*
           docker pull "$AGENT_IMAGE"
           started=$SECONDS
           output="$(docker run --rm \
             --user zabbix \
             --env FAKE_DNF_HISTORY \
             --volume "$GITHUB_WORKSPACE/zabbix-agent2-plugin-package-updates:/tmp/zabbix-agent2-plugin-package-updates:ro" \
-            --volume "$GITHUB_WORKSPACE/.github/ci/zabbix-agent2/package-updates.conf:/etc/zabbix/zabbix_agent2.d/plugins.d/package-updates.conf:ro" \
-            --volume "$GITHUB_WORKSPACE/.github/ci/zabbix-agent2/fakebin:/tmp/fakebin:ro" \
+            --volume "$GITHUB_WORKSPACE/integration/zabbix-agent2/package-updates.conf:/etc/zabbix/zabbix_agent2.d/plugins.d/package-updates.conf:ro" \
+            --volume "$GITHUB_WORKSPACE/integration/zabbix-agent2/fakebin:/tmp/fakebin:ro" \
             "$AGENT_IMAGE" \
             /bin/sh -c '
               PATH=/tmp/fakebin:$PATH zabbix_agent2 -t packages.get

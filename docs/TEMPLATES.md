@@ -1,8 +1,8 @@
 # Zabbix Templates and Triggers
 
-[Main README](README.md) · [Development guide](DEVELOPMENT.md)
+[Main README](../README.md) · [Development guide](DEVELOPMENT.md)
 
-The release asset [template-package-updates-by-zabbix-agent2.yaml](template-package-updates-by-zabbix-agent2.yaml) contains four templates:
+The release asset [template-package-updates-by-zabbix-agent2.yaml](../templates/template-package-updates-by-zabbix-agent2.yaml) contains four templates:
 
 |Host|Passive checks|Active checks|
 |----|--------------|-------------|

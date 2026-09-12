@@ -1,14 +1,13 @@
 # Development
 
-[Main README](README.md) · [Template and trigger reference](TEMPLATES.md)
+[Main README](../README.md) · [Template and trigger reference](TEMPLATES.md)
 
 ## Prerequisites
 
 Development uses:
 
 * Go 1.27.0 or newer for builds, tests, and static analysis
-* Docker Engine with Docker Compose v2 for the local integration lab
-* Ruby for template validation
+* Docker Engine with Docker Compose v2 for template integration tests and the local lab
 * A POSIX shell for installer and syntax checks
 
 ## Build from source
@@ -26,10 +25,9 @@ go test ./...
 go test -race ./...
 go vet ./...
 gofmt -l .
-ruby .github/ci/validate_templates.rb
 sh -n install.sh
-sh -n .dev/installer-test/dnf
-shellcheck install.sh .dev/installer-test/dnf
+sh -n integration/installer/dnf
+shellcheck install.sh integration/installer/dnf
 go test -tags=integration ./internal/apt/
 ```
 
@@ -55,14 +53,43 @@ explanation. Add the waiver and the reason together, or fix the finding.
 
 The integration workflow additionally runs the collectors and installed plugin inside every supported distribution image, exercises representative Agent 2 versions, and validates the release installer paths.
 
+## Template tests
+
+`go test ./...` includes the template's YAML structure, UUID baseline, active/passive parity, item references, macros, preprocessing contracts, and trigger expressions. The YAML parser is a test-only dependency.
+
+Run the real-Zabbix tests with:
+
+```bash
+docker compose -p package-updates-template-tests \
+  -f integration/templates/docker-compose.yaml up -d
+
+go test -tags=integration -race ./templates -count=1 -timeout=10m -v
+
+docker compose -p package-updates-template-tests \
+  -f integration/templates/docker-compose.yaml down -v --remove-orphans
+```
+
+The suite waits for the API, imports the original YAML twice, and verifies all four templates. It then changes the master items on the disposable imported templates to trapper mode and enables short-term history for the raw/projection values. Zabbix does not allow changing the type of an inherited host item. All dependent-item preprocessing, discovery rules, prototypes, default macros, and trigger expressions come from the shipped template.
+
+Go sends fixture JSON through Zabbix 7.0's `history.push` API. Zabbix executes the JavaScript and JSONPath itself. Tests poll actual item values, unsupported-item errors, discovered items, trigger severities, and problem/recovery states, including `nodata()`. They cover both active/passive template variants, invalid macros, incomplete metadata, deterministic discovery, quoted advisory IDs, deduplication, disappearance, and APT package details. Collection duration values act as per-fixture receipt markers so stale item values cannot satisfy a new step. The existing Agent 2 integration tests separately exercise the real collection transport.
+
+The test environment is separate from the local lab and uses an ephemeral database. Its API defaults to `http://127.0.0.1:17070/api_jsonrpc.php` with the disposable Zabbix credentials `Admin` / `zabbix`. To change the port, set `ZBX_TEST_PORT` for Compose and the corresponding `ZBX_TEST_API_URL` for Go. Point these tests only at the disposable test environment: they modify imported templates and create/delete fixture hosts.
+
+For failure diagnostics:
+
+```bash
+docker compose -p package-updates-template-tests \
+  -f integration/templates/docker-compose.yaml logs --no-color
+```
+
 ## Local Zabbix lab
 
 Start the complete local environment with:
 
 ```bash
 docker compose \
-  --env-file .dev/.env \
-  -f .dev/docker-compose.yaml \
+  --env-file integration/lab/.env \
+  -f integration/lab/docker-compose.yaml \
   up --build
 ```
 
@@ -70,7 +97,7 @@ The lab builds a representative DNF set, including Oracle Linux, plus Debian and
 
 Open <http://localhost:7070> and sign in with `Admin` / `zabbix`.
 
-The broader DNF and APT distribution matrix runs in CI. See [package-updates-integration.yaml](.github/workflows/package-updates-integration.yaml) for the exact images and Zabbix Agent 2 versions.
+The broader DNF and APT distribution matrix runs in CI. See [package-updates-integration.yaml](../.github/workflows/package-updates-integration.yaml) for the exact images and Zabbix Agent 2 versions.
 
 ## Project layout
 
@@ -79,10 +106,18 @@ The broader DNF and APT distribution matrix runs in CI. See [package-updates-int
 |`cmd/agent/`|External Agent 2 plugin entry point, lifecycle, backend selection, and public item keys|
 |`internal/dnf/`|DNF package, advisory, history, and reboot collection|
 |`internal/apt/`|APT package, repository, history, metadata, and reboot collection|
+|`internal/command/`|Shared command execution and failure handling|
+|`internal/logging/`|Zabbix logging adapter|
 |`internal/packageinfo/`|Backend-neutral package update types and capabilities|
 |`internal/results/`|Public JSON payload construction and validation|
-|`template-package-updates-by-zabbix-agent2.yaml`|Passive and active DNF/APT Zabbix templates|
-|`.dev/`|Local multi-distribution Zabbix lab and installer fixtures|
+|`templates/`|Passive and active DNF/APT Zabbix templates, Go contract tests, and Zabbix-backed fixture tests|
+|`configs/`|Installable plugin configuration|
+|`docs/`|Installation, troubleshooting, development, and template documentation|
+|`integration/`|DNF and APT smoke tests|
+|`integration/lab/`|Local multi-distribution Zabbix lab and Dockerfiles|
+|`integration/templates/`|Disposable Zabbix server, web/API, and database for template fixture tests|
+|`integration/installer/`|Installer test fixtures|
+|`integration/zabbix-agent2/`|Agent 2 compatibility-test configuration and command fixtures|
 |`.github/workflows/`|Unit, integration, release, and smoke-test automation|
 
 ## Package-manager commands

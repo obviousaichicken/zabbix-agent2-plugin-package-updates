@@ -64,8 +64,8 @@ jobs:
       - name: Validate installer scripts
         run: |
           sh -n install.sh
-          sh -n .dev/installer-test/dnf
-          shellcheck install.sh .dev/installer-test/dnf
+          sh -n integration/installer/dnf
+          shellcheck install.sh integration/installer/dnf
 
       - name: Scan for vulnerabilities
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
@@ -78,43 +78,38 @@ jobs:
   template:
     name: Zabbix Template Validation
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v7
 
-      - name: Validate template contracts
-        run: ruby .github/ci/validate_templates.rb
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
 
       - name: Start Zabbix test environment
         run: |
           docker compose \
-            --env-file .dev/.env \
-            -f .dev/docker-compose.yaml \
-            up -d zbx70_database zbx70_server zbx70_web
+            -p package-updates-template-tests \
+            -f integration/templates/docker-compose.yaml \
+            up -d
 
-      - name: Import and validate Zabbix template
-        run: |
-          docker compose \
-            --env-file .dev/.env \
-            -f .dev/docker-compose.yaml \
-            run --rm --no-deps \
-            -e ZBX_TEMPLATE_ONLY=1 \
-            zbx70_bootstrap
+      - name: Test template imports, preprocessing, discovery, and triggers
+        run: go test -tags=integration -race ./templates -count=1 -timeout=10m -v
 
       - name: Show Zabbix logs on failure
         if: failure()
         run: |
           docker compose \
-            --env-file .dev/.env \
-            -f .dev/docker-compose.yaml \
-            logs --no-color \
-            zbx70_database zbx70_server zbx70_web
+            -p package-updates-template-tests \
+            -f integration/templates/docker-compose.yaml \
+            logs --no-color
 
       - name: Stop Zabbix test environment
         if: always()
         run: |
           docker compose \
-            --env-file .dev/.env \
-            -f .dev/docker-compose.yaml \
+            -p package-updates-template-tests \
+            -f integration/templates/docker-compose.yaml \
             down -v --remove-orphans

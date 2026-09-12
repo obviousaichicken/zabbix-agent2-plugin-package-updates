@@ -57,9 +57,9 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             dist/zabbix-agent2-plugin-package-updates \
             dist/zabbix-agent2-plugin-package-updates.sha256 \
-            package-updates.conf \
+            configs/package-updates.conf \
             install.sh \
-            template-package-updates-by-zabbix-agent2.yaml \
+            templates/template-package-updates-by-zabbix-agent2.yaml \
             --generate-notes \
             --title "$GITHUB_REF_NAME" \
             --verify-tag

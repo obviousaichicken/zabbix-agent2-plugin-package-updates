@@ -14,7 +14,7 @@ RUN CGO_ENABLED=0 go build -o /out/zabbix-agent2-plugin-package-updates ./cmd/ag
 
 FROM ${BASE_IMAGE}
 
-ARG AGENT_CONFIG=.dev/zabbix_agent2.conf
+ARG AGENT_CONFIG=integration/lab/zabbix_agent2.conf
 
 # Zabbix publishes a repository only for the distributions it builds for.
 # Derivatives such as Linux Mint and interim Ubuntu releases are not among
@@ -51,7 +51,7 @@ RUN set -eux; \
 ENV HOME=/var/lib/zabbix
 
 COPY ${AGENT_CONFIG} /etc/zabbix/zabbix_agent2.conf
-COPY package-updates.conf /tmp/release/package-updates.conf
+COPY configs/package-updates.conf /tmp/release/package-updates.conf
 COPY install.sh /tmp/install.sh
 COPY --from=builder /out/ /tmp/release/
 

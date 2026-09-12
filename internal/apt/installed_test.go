@@ -193,62 +193,138 @@ func TestParseDebianVersionRejectsMalformedValues(t *testing.T) {
 	}
 }
 
-func TestBatchPolicyArgumentsBounds(t *testing.T) {
+// A typical host must fit one apt-cache invocation. Each extra batch reloads
+// the whole APT cache, which dominates collection time.
+func TestBatchPolicyArgumentsKeepsATypicalHostInOneBatch(t *testing.T) {
 	t.Parallel()
 
-	packages := make([]InstalledPackage, 0, 700)
-	for index := range 700 {
+	packages := make([]InstalledPackage, 0, 3000)
+	for index := range 3000 {
 		packages = append(packages, InstalledPackage{
-			Name:         fmt.Sprintf("package-%03d-%s", index, strings.Repeat("x", 116)),
+			Name:         fmt.Sprintf("package-name-%04d", index),
 			Architecture: "amd64",
 		})
 	}
-	batches, err := BatchPolicyArguments(packages)
+	budget := policyArgumentBudget(execArgumentLimit(), 16<<10, []string{"/usr/bin/apt-cache", "policy"})
+
+	batches, err := BatchPolicyArguments(packages, budget)
+	if err != nil {
+		t.Fatalf("batch policy arguments: %v", err)
+	}
+	if len(batches) != 1 {
+		t.Fatalf("batches = %d, want 1 for %d packages", len(batches), len(packages))
+	}
+	if len(batches[0]) != len(packages) {
+		t.Fatalf("batch size = %d, want %d", len(batches[0]), len(packages))
+	}
+}
+
+// Even the POSIX floor, used when the live limit cannot be read, must still
+// admit far more packages per call than the previous fixed 512 cap.
+func TestBatchPolicyArgumentsFallbackBudgetBeatsTheOldFixedCap(t *testing.T) {
+	t.Parallel()
+
+	packages := make([]InstalledPackage, 0, 2000)
+	for index := range 2000 {
+		packages = append(packages, InstalledPackage{
+			Name:         fmt.Sprintf("package-name-%04d", index),
+			Architecture: "amd64",
+		})
+	}
+	budget := policyArgumentBudget(fallbackExecArgumentLimit, 8<<10, []string{"/usr/bin/apt-cache", "policy"})
+
+	batches, err := BatchPolicyArguments(packages, budget)
+	if err != nil {
+		t.Fatalf("batch policy arguments: %v", err)
+	}
+	if len(batches[0]) <= 512 {
+		t.Fatalf("first batch = %d arguments, want more than the old 512 cap", len(batches[0]))
+	}
+}
+
+func TestBatchPolicyArgumentsRespectsTheBudget(t *testing.T) {
+	t.Parallel()
+
+	packages := make([]InstalledPackage, 0, 4000)
+	for index := range 4000 {
+		packages = append(packages, InstalledPackage{
+			Name:         fmt.Sprintf("package-%04d-%s", index, strings.Repeat("x", 116)),
+			Architecture: "amd64",
+		})
+	}
+	// The smallest permitted budget, so 4000 long names must span batches.
+	budget := maxPolicyArgumentBytes
+
+	batches, err := BatchPolicyArguments(packages, budget)
 	if err != nil {
 		t.Fatalf("batch policy arguments: %v", err)
 	}
 	if len(batches) < 2 {
-		t.Fatalf("batches = %d, want multiple count/byte-bounded batches", len(batches))
+		t.Fatalf("batches = %d, want multiple byte-bounded batches", len(batches))
 	}
 
 	total := 0
 	for batchIndex, batch := range batches {
-		if len(batch) == 0 || len(batch) > maxPolicyPackageArguments {
-			t.Errorf("batch %d has %d arguments", batchIndex, len(batch))
+		if len(batch) == 0 {
+			t.Errorf("batch %d is empty", batchIndex)
 		}
 		bytes := 0
 		for _, argument := range batch {
-			bytes += len(argument) + 1
+			bytes += len(argument) + 1 + execArgumentPointerBytes
 		}
-		if bytes > maxPolicyArgumentBytes {
-			t.Errorf("batch %d has %d encoded argument bytes", batchIndex, bytes)
+		if bytes > budget {
+			t.Errorf("batch %d costs %d bytes, budget is %d", batchIndex, bytes, budget)
 		}
 		total += len(batch)
 	}
 	if total != len(packages) {
-		t.Errorf("batched packages = %d, want %d", total, len(packages))
+		t.Fatalf("batched %d arguments, want %d", total, len(packages))
 	}
 }
 
-func TestBatchPolicyArgumentsPackageCountBoundary(t *testing.T) {
+// The budget must never fall below room for one maximum-length argument, or a
+// single long package name would make batching impossible.
+func TestPolicyArgumentBudgetNeverStarves(t *testing.T) {
 	t.Parallel()
 
-	packages := make([]InstalledPackage, 513)
-	for index := range packages {
-		packages[index] = InstalledPackage{
-			Name:         fmt.Sprintf("pkg-%03d", index),
-			Architecture: "amd64",
-		}
+	tests := []struct {
+		name             string
+		limit            int
+		environmentBytes int
+	}{
+		{name: "tiny limit", limit: 4096, environmentBytes: 0},
+		{name: "environment larger than the limit", limit: fallbackExecArgumentLimit, environmentBytes: 1 << 20},
+		{name: "negative headroom", limit: 0, environmentBytes: 1 << 30},
 	}
-	batches, err := BatchPolicyArguments(packages)
-	if err != nil {
-		t.Fatalf("batch policy arguments: %v", err)
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			budget := policyArgumentBudget(test.limit, test.environmentBytes, []string{"/usr/bin/apt-cache", "policy"})
+			if budget < maxPolicyArgumentBytes {
+				t.Fatalf("budget = %d, want at least %d", budget, maxPolicyArgumentBytes)
+			}
+			if _, err := BatchPolicyArguments(
+				[]InstalledPackage{{Name: "pkg", Architecture: "amd64"}},
+				budget,
+			); err != nil {
+				t.Fatalf("BatchPolicyArguments() error = %v", err)
+			}
+		})
 	}
-	if len(batches) != 2 {
-		t.Fatalf("batches = %d, want 2", len(batches))
-	}
-	if len(batches[0]) != 512 || len(batches[1]) != 1 {
-		t.Fatalf("batch sizes = %v, want [512 1]", []int{len(batches[0]), len(batches[1])})
+}
+
+// The derived budget must stay inside what the host can actually exec.
+func TestPolicyArgumentBudgetStaysInsideTheExecLimit(t *testing.T) {
+	t.Parallel()
+
+	const environmentBytes = 16 << 10
+	limit := execArgumentLimit()
+	budget := policyArgumentBudget(limit, environmentBytes, []string{"/usr/bin/apt-cache", "policy"})
+	if budget+environmentBytes > limit {
+		t.Fatalf("budget %d plus environment %d exceeds exec limit %d", budget, environmentBytes, limit)
 	}
 }
 
@@ -256,16 +332,17 @@ func TestBatchPolicyArgumentsRejectsDuplicatesAndOversize(t *testing.T) {
 	t.Parallel()
 
 	pkg := InstalledPackage{Name: "package", Architecture: "amd64"}
-	if _, err := BatchPolicyArguments([]InstalledPackage{pkg, pkg}); err == nil {
+	budget := policyArgumentBudget(execArgumentLimit(), 8<<10, nil)
+	if _, err := BatchPolicyArguments([]InstalledPackage{pkg, pkg}, budget); err == nil {
 		t.Error("duplicate package was accepted")
 	}
 	if _, err := BatchPolicyArguments([]InstalledPackage{{
 		Name: strings.Repeat("a", maxPolicyArgumentBytes), Architecture: "amd64",
-	}}); err == nil {
+	}}, budget); err == nil {
 		t.Error("oversize argument was accepted")
 	}
 
-	empty, err := BatchPolicyArguments(nil)
+	empty, err := BatchPolicyArguments(nil, budget)
 	if err != nil || empty == nil || len(empty) != 0 {
 		t.Fatalf("empty batches = %#v, %v; want non-nil empty result", empty, err)
 	}

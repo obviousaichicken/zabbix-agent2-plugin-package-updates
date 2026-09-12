@@ -51,6 +51,7 @@ type Client struct {
 	stat           func(string) (fs.FileInfo, error)
 	readFile       func(string) ([]byte, error)
 	now            func() time.Time
+	policyBudget   int
 	rebootMarker   string
 	refreshSignals []string
 	history        *HistoryReader
@@ -140,11 +141,16 @@ func newClient(
 	}
 
 	return &Client{
-		runner:         runner,
-		paths:          paths,
-		stat:           stat,
-		readFile:       readFile,
-		now:            now,
+		runner:   runner,
+		paths:    paths,
+		stat:     stat,
+		readFile: readFile,
+		now:      now,
+		policyBudget: policyArgumentBudget(
+			execArgumentLimit(),
+			environmentBytes(os.Environ()),
+			[]string{paths.APTCache, "policy"},
+		),
 		rebootMarker:   defaultRebootMarker,
 		refreshSignals: defaultRefreshSignals(),
 		history:        history,
@@ -163,6 +169,7 @@ type testSystem struct {
 	historyDirectory  string
 	rebootMarker      string
 	refreshSignals    []string
+	policyBudget      int
 	location          *time.Location
 }
 
@@ -192,6 +199,9 @@ func newClientWithSystemForTest(system testSystem) (*Client, error) {
 	client.history = history
 	client.rebootMarker = system.rebootMarker
 	client.refreshSignals = append([]string(nil), system.refreshSignals...)
+	if system.policyBudget != 0 {
+		client.policyBudget = system.policyBudget
+	}
 
 	return client, nil
 }
@@ -327,7 +337,10 @@ func (client *Client) packagePolicies(
 	indexes RepositoryIndexes,
 	nativeArchitecture string,
 ) ([]PackagePolicy, error) {
-	argumentBatches, err := BatchPolicyArguments(installed)
+	// Every batch is another apt-cache process that reloads the whole APT
+	// cache, so the budget fits as many packages into one invocation as the
+	// host's exec limit safely allows.
+	argumentBatches, err := BatchPolicyArguments(installed, client.policyBudget)
 	if err != nil {
 		return nil, err
 	}
@@ -526,6 +539,32 @@ func winningCandidateIsSecurity(sources []PolicySource) bool {
 	return false
 }
 
+// commandEnvironment is the environment every APT command runs with. The
+// runner merges it over the inherited environment, so both contribute to the
+// exec argument budget.
+func commandEnvironment() map[string]string {
+	return map[string]string{
+		"LC_ALL": "C",
+		"LANG":   "C",
+	}
+}
+
+// environmentBytes estimates what the child process environment costs against
+// the same exec limit as the argument list.
+func environmentBytes(inherited []string) int {
+	total := 0
+	for _, entry := range inherited {
+		total += len(entry) + 1 + execArgumentPointerBytes
+	}
+	for name, value := range commandEnvironment() {
+		// Overrides may replace an inherited entry rather than add one, so
+		// counting them again only ever overestimates the cost.
+		total += len(name) + len(value) + 2 + execArgumentPointerBytes
+	}
+
+	return total
+}
+
 func (client *Client) run(
 	ctx context.Context,
 	operation string,
@@ -537,10 +576,7 @@ func (client *Client) run(
 		Name:              path,
 		Args:              args,
 		AcceptedExitCodes: acceptedExitCodes,
-		Env: map[string]string{
-			"LC_ALL": "C",
-			"LANG":   "C",
-		},
+		Env:               commandEnvironment(),
 	})
 	if err != nil {
 		return result, &CommandError{

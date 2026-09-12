@@ -319,20 +319,17 @@ func TestClientPackagesExcludesCandidateDowngrade(t *testing.T) {
 	}
 }
 
-func TestClientPackagesBatchesPolicyCommands(t *testing.T) {
+// 513 packages used to need two apt-cache invocations because of a fixed
+// 512-argument cap. Each extra invocation reloads the entire APT cache, so
+// they must now fit one call.
+func TestClientPackagesQueriesPolicyInOneCommand(t *testing.T) {
 	t.Parallel()
 
-	var installed strings.Builder
-	var firstPolicy strings.Builder
-	var secondPolicy strings.Builder
+	var installed, policy strings.Builder
 	for index := range 513 {
 		name := fmt.Sprintf("pkg-%03d", index)
 		fmt.Fprintf(&installed, "%s:amd64|amd64|1.0-1|installed\n", name)
-		destination := &firstPolicy
-		if index >= 512 {
-			destination = &secondPolicy
-		}
-		fmt.Fprintf(destination, `%s:
+		fmt.Fprintf(&policy, `%s:
   Installed: 1.0-1
   Candidate: 1.0-1
   Version table:
@@ -345,8 +342,7 @@ func TestClientPackagesBatchesPolicyCommands(t *testing.T) {
 		{stdout: []byte("amd64\n")},
 		{stdout: []byte(aptTargetRecord(targetRecordOptions{}))},
 		{stdout: []byte(installed.String())},
-		{stdout: []byte(firstPolicy.String())},
-		{stdout: []byte(secondPolicy.String())},
+		{stdout: []byte(policy.String())},
 	}}
 	client := mustAPTClient(
 		t,
@@ -363,8 +359,82 @@ func TestClientPackagesBatchesPolicyCommands(t *testing.T) {
 		t.Fatalf("Updates = %d, want 0", len(data.Updates))
 	}
 	requests := runner.Requests()
-	if len(requests) != 5 || len(requests[3].Args) != 513 || len(requests[4].Args) != 2 {
-		t.Fatalf("policy request sizes = %#v", requestArgumentLengths(requests))
+	if len(requests) != 4 {
+		t.Fatalf("commands = %d, want 4 (one apt-cache policy call)", len(requests))
+	}
+	if len(requests[3].Args) != 514 {
+		t.Fatalf("policy arguments = %d, want 514 (policy + 513 packages)", len(requests[3].Args))
+	}
+}
+
+// A host whose exec limit cannot hold every package must still be batched
+// correctly, with each batch mapped back to the packages it asked about.
+func TestClientPackagesSplitsPolicyWhenTheBudgetIsTight(t *testing.T) {
+	t.Parallel()
+
+	const packageCount = 600
+	var installed strings.Builder
+	policies := make([]strings.Builder, 2)
+	for index := range packageCount {
+		name := fmt.Sprintf("pkg-%03d", index)
+		fmt.Fprintf(&installed, "%s:amd64|amd64|1.0-1|installed\n", name)
+		destination := &policies[0]
+		if index >= 300 {
+			destination = &policies[1]
+		}
+		fmt.Fprintf(destination, `%s:
+  Installed: 1.0-1
+  Candidate: 1.0-1
+  Version table:
+ *** 1.0-1 100
+        100 /var/lib/dpkg/status
+`, name)
+	}
+	now := time.Date(2026, time.August, 31, 12, 0, 0, 0, time.UTC)
+	runner := &fakeAPTRunner{responses: []fakeAPTResponse{
+		{stdout: []byte("amd64\n")},
+		{stdout: []byte(aptTargetRecord(targetRecordOptions{}))},
+		{stdout: []byte(installed.String())},
+		{stdout: []byte(policies[0].String())},
+		{stdout: []byte(policies[1].String())},
+	}}
+	// "pkg-NNN:amd64" is 13 bytes, so 22 bytes each with the NUL and the
+	// argv pointer: a 6600 byte budget holds exactly 300 of them.
+	client, err := newClientWithSystemForTest(testSystem{
+		runner: runner,
+		paths:  testAPTPaths(),
+		stat: func(string) (fs.FileInfo, error) {
+			return fakeFileInfo{mode: 0o644, modified: now}, nil
+		},
+		now:               func() time.Time { return now },
+		historyFileSystem: &fakeHistoryFileSystem{readDirErr: fs.ErrNotExist},
+		historyDirectory:  "/virtual/apt",
+		rebootMarker:      "/virtual/reboot-required",
+		refreshSignals:    []string{"/virtual/apt-refresh"},
+		policyBudget:      300 * 22,
+		location:          time.UTC,
+	})
+	if err != nil {
+		t.Fatalf("construct APT client: %v", err)
+	}
+
+	data, err := client.Packages(context.Background())
+	if err != nil {
+		t.Fatalf("Packages() error = %v", err)
+	}
+	if len(data.Installed) != packageCount {
+		t.Fatalf("Installed = %d, want %d", len(data.Installed), packageCount)
+	}
+	requests := runner.Requests()
+	if len(requests) != 5 {
+		t.Fatalf("commands = %d, want 5 (two apt-cache policy calls)", len(requests))
+	}
+	if len(requests[3].Args) != 301 || len(requests[4].Args) != 301 {
+		t.Fatalf(
+			"policy argument counts = %d/%d, want 301/301",
+			len(requests[3].Args),
+			len(requests[4].Args),
+		)
 	}
 }
 

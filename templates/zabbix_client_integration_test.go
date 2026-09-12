@@ -95,10 +95,14 @@ func connectZabbix(t *testing.T) *zabbixAPI {
 		url = "http://127.0.0.1:17070/api_jsonrpc.php"
 	}
 	api := &zabbixAPI{url: url, client: &http.Client{Timeout: 10 * time.Second}}
+	var version string
 	await(t, 3*time.Minute, "Zabbix API", func() error {
-		var version string
 		return api.call(t.Context(), "apiinfo.version", object{}, &version)
 	})
+	t.Logf("Zabbix API version: %s", version)
+	if branch := os.Getenv("ZBX_TEST_VERSION"); branch != "" && !strings.HasPrefix(version, branch+".") {
+		t.Fatalf("Zabbix API version %s does not match requested branch %s", version, branch)
+	}
 	api.mustCall(t, "user.login", object{"username": "Admin", "password": "zabbix"}, &api.token)
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

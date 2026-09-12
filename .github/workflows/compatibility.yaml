@@ -1,4 +1,4 @@
-name: Package Updates Integration Tests
+name: Compatibility Tests
 
 on:
   workflow_call:
@@ -16,6 +16,67 @@ permissions:
   contents: read
 
 jobs:
+  apt-kernel:
+    name: Dpkg-backed collector tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      # The kernel comparison shells out to dpkg. The runner has dpkg, and a
+      # container cannot cover this: /proc/sys/kernel/osrelease reports the
+      # host kernel, which no packaged kernel in the container ever matches.
+      - name: Run dpkg-backed collector tests
+        run: go test -tags=integration ./internal/apt/
+
+  template:
+    name: Zabbix Template Validation (${{ matrix.zabbix }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        zabbix: ['7.0', '7.2', '7.4']
+    env:
+      ZBX_TEST_VERSION: ${{ matrix.zabbix }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Start Zabbix test environment
+        run: |
+          docker compose \
+            -p package-updates-template-tests \
+            -f integration/templates/docker-compose.yaml \
+            up -d
+
+      - name: Test template imports, preprocessing, discovery, and triggers
+        run: go test -tags=integration -race ./templates -count=1 -timeout=10m -v
+
+      - name: Show Zabbix logs on failure
+        if: failure()
+        run: |
+          docker compose \
+            -p package-updates-template-tests \
+            -f integration/templates/docker-compose.yaml \
+            logs --no-color
+
+      - name: Stop Zabbix test environment
+        if: always()
+        run: |
+          docker compose \
+            -p package-updates-template-tests \
+            -f integration/templates/docker-compose.yaml \
+            down -v --remove-orphans
+
   dnf:
     name: Distribution compatibility / ${{ matrix.name }}
     runs-on: ubuntu-latest

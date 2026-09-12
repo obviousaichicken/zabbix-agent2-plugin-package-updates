@@ -97,7 +97,7 @@ The lab builds a representative DNF set, including Oracle Linux, plus Debian and
 
 Open <http://localhost:7070> and sign in with `Admin` / `zabbix`.
 
-The broader DNF and APT distribution matrix runs in CI. See [package-updates-integration.yaml](../.github/workflows/package-updates-integration.yaml) for the exact images and Zabbix Agent 2 versions.
+The broader DNF and APT distribution matrix runs in CI. See [compatibility.yaml](../.github/workflows/compatibility.yaml) for the exact images and Zabbix Agent 2 versions.
 
 ## Project layout
 

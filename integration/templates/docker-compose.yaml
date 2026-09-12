@@ -10,7 +10,8 @@ services:
       - /var/lib/mysql
 
   server:
-    image: zabbix/zabbix-server-mysql:alpine-7.0-latest
+    # One branch selector keeps server and frontend compatible; local default is 7.0.
+    image: zabbix/zabbix-server-mysql:alpine-${ZBX_TEST_VERSION:-7.0}-latest
     environment:
       DB_SERVER_HOST: database
       MYSQL_DATABASE: zabbix
@@ -22,7 +23,7 @@ services:
       - database
 
   web:
-    image: zabbix/zabbix-web-nginx-mysql:alpine-7.0-latest
+    image: zabbix/zabbix-web-nginx-mysql:alpine-${ZBX_TEST_VERSION:-7.0}-latest
     environment:
       ZBX_SERVER_HOST: server
       DB_SERVER_HOST: database

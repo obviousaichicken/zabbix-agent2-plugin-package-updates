@@ -1,0 +1,53 @@
+name: Installer Tests
+
+on:
+  workflow_call:
+  pull_request:
+  merge_group:
+  push:
+    branches: [main, 'claude/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lifecycle:
+    name: Installer lifecycle and failures
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Test installer lifecycle and failures
+        run: python3 -B -m unittest discover -s integration/installer -p 'test_*.py' -v
+
+  installer:
+    name: Real systemd installation (Ubuntu 24.04, Zabbix 7.0)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Build candidate and install Zabbix
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          mkdir -p "$RUNNER_TEMP/installer-release"
+          go build -trimpath -ldflags='-s -w' -o "$RUNNER_TEMP/installer-release/zabbix-agent2-plugin-package-updates" ./cmd/agent
+          cp configs/package-updates.conf "$RUNNER_TEMP/installer-release/"
+          cd "$RUNNER_TEMP/installer-release"
+          sha256sum zabbix-agent2-plugin-package-updates > zabbix-agent2-plugin-package-updates.sha256
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/zabbix-release.deb" https://repo.zabbix.com/zabbix/7.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest_7.0+ubuntu24.04_all.deb
+          sudo dpkg -i "$RUNNER_TEMP/zabbix-release.deb"
+          sudo apt-get update
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y zabbix-agent2
+      - name: Run installer with service restart enabled
+        run: sudo env RELEASE_URL="file://$RUNNER_TEMP/installer-release" SKIP_SERVICE_RESTART=0 sh install.sh
+      - name: Show service logs on failure
+        if: failure()
+        run: |
+          sudo journalctl -u zabbix-agent2 --no-pager
+          sudo cat /var/log/zabbix/zabbix_agent2.log

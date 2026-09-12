@@ -26,6 +26,7 @@ func TestZabbixTemplateIntegration(t *testing.T) {
 			host := newFixtureHost(t, api, templates[name])
 			if strings.HasPrefix(name, "APT") {
 				checkAPTPipeline(t, host)
+				checkAPTTriggerLifecycle(t, host)
 				return
 			}
 			checkDiscoveryPipeline(t, host)
@@ -287,16 +288,23 @@ func healthyAdvisories(t *testing.T) object {
 
 func (h *fixtureHost) problems(t *testing.T, want []string) error {
 	t.Helper()
+	return h.triggerStates(t, advisoryTriggerNames, want)
+}
+
+// Check every named trigger, including normal evaluation state: an unknown
+// expression must never pass as an OK/recovered trigger.
+func (h *fixtureHost) triggerStates(t *testing.T, names map[string]string, want []string) error {
+	t.Helper()
 	var triggers []object
 	h.api.mustCall(t, "trigger.get", object{
 		"hostids": []string{h.id}, "output": []string{"description", "value", "state", "error"},
-		"filter": object{"description": slices.Collect(maps.Values(advisoryTriggerNames))},
+		"filter": object{"description": slices.Collect(maps.Values(names))},
 	}, &triggers)
-	if len(triggers) != len(advisoryTriggerNames) {
+	if len(triggers) != len(names) {
 		return fmt.Errorf("missing triggers: %v", triggers)
 	}
 	byName := indexBy(t, triggers, "description")
-	for short, name := range advisoryTriggerNames {
+	for short, name := range names {
 		value := "0"
 		if slices.Contains(want, short) {
 			value = "1"
@@ -381,4 +389,80 @@ func checkAPTPipeline(t *testing.T, h *fixtureHost) {
 	})
 	asObject(t, payload["metadata"])["refreshed_at"] = nil
 	h.feed(t, "packages.get", payload, func() error { return h.value("apt.metadata.refreshed", "0") })
+}
+
+var aptTriggerNames = map[string]string{
+	"security":    "APT: Security updates are available",
+	"reboot":      "APT: Reboot is required",
+	"stale":       "APT: Package metadata is stale",
+	"unavailable": "APT: Collection is unavailable",
+}
+
+func healthyAPT(t *testing.T) object {
+	t.Helper()
+	payload := loadPayload(t, "../internal/results/testdata/packages-apt.golden.json")
+	summary := asObject(t, payload["summary"])
+	summary["updates"] = 0
+	summary["updates_pending"] = false
+	summary["reboot_pending"] = false
+	maps.Copy(asObject(t, summary["update_types"]), object{"security": 0, "other": 0})
+	payload["updates"] = []any{}
+	for _, repository := range payload["repositories"].([]any) {
+		asObject(t, repository)["update_count"] = 0
+	}
+	return payload
+}
+
+func checkAPTTriggerLifecycle(t *testing.T, h *fixtureHost) {
+	t.Helper()
+	healthy := func(t *testing.T) {
+		t.Helper()
+		h.feed(t, "packages.get", healthyAPT(t), func() error { return h.triggerStates(t, aptTriggerNames, nil) })
+	}
+	healthy(t)
+	// These boundaries exercise the shipped defaults (security >= 1, age > 2d).
+	// Each scenario starts healthy and explicitly recovers before the next one.
+	cases := []struct {
+		name       string
+		security   bool
+		reboot     bool
+		age        int
+		incomplete bool
+		want       []string
+	}{
+		{name: "security at threshold", security: true, age: 1800, want: []string{"security"}},
+		{name: "reboot required", reboot: true, age: 1800, want: []string{"reboot"}},
+		{name: "metadata at threshold stays healthy", age: 172800},
+		{name: "metadata above threshold", age: 172801, want: []string{"stale"}},
+		{name: "collection incomplete", incomplete: true, age: 1800, want: []string{"unavailable"}},
+		{name: "simultaneous problems", security: true, reboot: true, age: 172801, incomplete: true,
+			want: []string{"security", "reboot", "stale", "unavailable"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			payload := healthyAPT(t)
+			if tc.security {
+				payload = loadPayload(t, "../internal/results/testdata/packages-apt.golden.json")
+			}
+			asObject(t, payload["summary"])["reboot_pending"] = tc.reboot
+			asObject(t, payload["metadata"])["age_seconds"] = tc.age
+			asObject(t, payload["collection"])["complete"] = !tc.incomplete
+			h.feed(t, "packages.get", payload, func() error { return h.triggerStates(t, aptTriggerNames, tc.want) })
+			healthy(t)
+		})
+	}
+	t.Run("no data and resumed collection", func(t *testing.T) {
+		// Only shorten the macro: retain the real nodata expression and stop
+		// feeding altogether. Seed complete=1 so the other OR arm cannot pass.
+		h.macros(t, map[string]string{"{$APT.NODATA.TIME}": "30s"})
+		healthy(t)
+		await(t, 90*time.Second, "APT nodata activation", func() error {
+			h.refresh(t)
+			if err := h.value("apt.collection.complete", "1"); err != nil {
+				return err
+			}
+			return h.triggerStates(t, aptTriggerNames, []string{"unavailable"})
+		})
+		healthy(t)
+	})
 }

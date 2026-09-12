@@ -21,7 +21,7 @@ It supports:
 * AlmaLinux 8, 9, and 10
 * Oracle Linux 8, 9, and 10
 * CentOS Stream 9 and 10
-* Debian 11, 12, and 13
+* Debian 12 and 13
 * Ubuntu 22.04, 24.04, 25.04, 25.10, and 26.04
 * Linux Mint 21 and 22
 

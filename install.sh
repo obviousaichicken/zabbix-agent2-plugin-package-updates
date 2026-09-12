@@ -109,9 +109,9 @@ supported_version_check() {
 	case "$check_id" in
 	debian)
 		case "$check_version" in
-		11 | 12 | 13) return 0 ;;
+		12 | 13) return 0 ;;
 		esac
-		printf 'Debian 11, 12, or 13\n'
+		printf 'Debian 12 or 13\n'
 		;;
 	ubuntu)
 		case "$check_version" in

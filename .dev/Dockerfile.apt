@@ -24,23 +24,7 @@ ARG AGENT_CONFIG=.dev/zabbix_agent2.conf
 # from a different packager, loading the same plugin.
 ARG ZABBIX_RELEASE_URL=
 
-# An archived Debian release keeps its indexes on deb.debian.org after the
-# pool files those indexes reference have been pruned, so apt-get update
-# succeeds and the install that follows it fails on a 404. A host still
-# running such a release has to point at archive.debian.org instead, and so
-# does this image. Set this to the release codename to switch; the archive
-# stops refreshing Release files, so Check-Valid-Until has to go with it.
-ARG DEBIAN_ARCHIVE_SUITE=
-
 RUN set -eux; \
-    if [ -n "$DEBIAN_ARCHIVE_SUITE" ]; then \
-        rm -f /etc/apt/sources.list.d/*; \
-        { \
-            echo "deb http://archive.debian.org/debian ${DEBIAN_ARCHIVE_SUITE} main"; \
-            echo "deb http://archive.debian.org/debian-security ${DEBIAN_ARCHIVE_SUITE}-security main"; \
-        } >/etc/apt/sources.list; \
-        echo 'Acquire::Check-Valid-Until "false";' >/etc/apt/apt.conf.d/99archive; \
-    fi; \
     apt-get update; \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         ca-certificates \

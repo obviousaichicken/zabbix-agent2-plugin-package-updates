@@ -38,10 +38,9 @@ func TestInstallerVersionGate(t *testing.T) {
 		version string
 		status  int
 	}{
-		{name: "debian 11", id: "debian", version: "11", status: supported},
 		{name: "debian 12", id: "debian", version: "12", status: supported},
 		{name: "debian 13", id: "debian", version: "13", status: supported},
-		{name: "debian 10", id: "debian", version: "10", status: unsupported},
+		{name: "debian 11", id: "debian", version: "11", status: unsupported},
 		{name: "debian sid has no version", id: "debian", version: "", status: unsupported},
 		{name: "ubuntu 22.04", id: "ubuntu", version: "22.04", status: supported},
 		{name: "ubuntu 24.04", id: "ubuntu", version: "24.04", status: supported},

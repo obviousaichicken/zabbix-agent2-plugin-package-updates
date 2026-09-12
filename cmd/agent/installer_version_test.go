@@ -61,13 +61,9 @@ func TestInstallerVersionGate(t *testing.T) {
 		{name: "oracle linux 9", id: "ol", version: "9", status: supported},
 		{name: "centos 7", id: "centos", version: "7", status: unsupported},
 		{name: "fedora rawhide is not numeric", id: "fedora", version: "rawhide", status: unsupported},
-		// Reached through ID_LIKE. These number their releases on their own
-		// schedule, so there is nothing to check the version against.
-		{name: "kali", id: "kali", version: "2026.1", status: notGated},
-		{name: "pop", id: "pop", version: "24.04", status: notGated},
-		{name: "amazon linux 2023", id: "amzn", version: "2023", status: notGated},
-		{name: "devuan", id: "devuan", version: "5", status: notGated},
-		{name: "lmde", id: "lmde", version: "6", status: notGated},
+		// A distribution reached through ID_LIKE numbers its releases on
+		// its own schedule, so there is nothing to check it against.
+		{name: "an unlisted distribution is not gated", id: "kali", version: "2026.1", status: notGated},
 	}
 
 	for _, test := range tests {

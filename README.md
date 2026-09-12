@@ -25,8 +25,6 @@ It supports:
 * Ubuntu 22.04, 24.04, 25.04, 25.10, and 26.04
 * Linux Mint 21 and 22
 
-Other Debian and RHEL derivatives are detected from `ID_LIKE` and work without being listed here. See [Derivatives](#derivatives).
-
 Additionally the plugin works with all `zabbix-agent2` versions in the 7.0, 7.2, and 7.4 branches. Releases are `linux/amd64` binaries and the installer refuses any other architecture; other architectures need a source build.
 
 <a href="docs/images/dnf-advisory-values-rocky8.png"><img width="100%" alt="DNF advisory collection values for a Rocky Linux 8 host in Zabbix" src="docs/images/dnf-advisory-values-rocky8.png"></a>
@@ -150,15 +148,6 @@ Plugins.PackageUpdates.Backend=apt
 ```
 
 Valid values are `auto`, `dnf`, and `apt`. A forced backend skips distribution-family detection but still checks the required commands. Leave this setting out for normal installations.
-
-### Derivatives
-
-Because detection falls back to `ID_LIKE`, distributions this project has never tested still work. On the APT side that covers LMDE, Pop!_OS, Zorin OS, elementary OS, Kali, Devuan and Raspberry Pi OS; on the DNF side Nobara, EuroLinux and the other RHEL rebuilds. Anything whose `ID_LIKE` names neither family, such as openSUSE or Arch, is refused at startup rather than guessed at.
-
-Two things are worth knowing before relying on one:
-
-* None of them is in the test matrix, and the installer does not check their versions. It accepts any release with a note saying the version was not checked, because their numbering is their own. They are covered by the detection rule and nothing else.
-* Security classification matches the official Debian and Ubuntu security pockets by repository origin, so it holds on any derivative that keeps them, which the Ubuntu-based ones do for the base system. Updates served from a derivative's own repository are classified as `other` whatever they contain, so on a derivative read a security count of zero as "none recognized" rather than "none pending".
 
 ### Reboot detection
 

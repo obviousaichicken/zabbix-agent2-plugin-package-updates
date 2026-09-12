@@ -5,7 +5,11 @@ on:
   pull_request:
   merge_group:
   push:
-    branches: [main]
+    # Development branches build too. Without this, work in progress is only
+    # ever verified by a manual dispatch, which is easy to forget precisely
+    # when it matters. Pull requests and main are covered by the triggers
+    # above; this covers the branch before a pull request exists.
+    branches: [main, 'claude/**']
   workflow_dispatch:
 
 permissions:

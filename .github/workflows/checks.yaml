@@ -5,7 +5,11 @@ on:
   pull_request:
   merge_group:
   push:
-    branches: [main]
+    # Development branches build too. Without this, work in progress is only
+    # ever verified by a manual dispatch, which is easy to forget precisely
+    # when it matters. Pull requests and main are covered by the triggers
+    # above; this covers the branch before a pull request exists.
+    branches: [main, 'claude/**']
   workflow_dispatch:
 
 permissions:
@@ -30,6 +34,12 @@ jobs:
 
       - name: Run tests with race detector
         run: go test -race ./...
+
+      # The kernel comparison shells out to dpkg. The runner has dpkg, and a
+      # container cannot cover this: /proc/sys/kernel/osrelease reports the
+      # host kernel, which no packaged kernel in the container ever matches.
+      - name: Run dpkg-backed collector tests
+        run: go test -tags=integration ./internal/apt/
 
       - name: Run Go vet
         run: go vet ./...

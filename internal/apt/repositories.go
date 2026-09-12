@@ -61,7 +61,8 @@ func ParseRepositoryIndexes(data []byte) (RepositoryIndexes, error) {
 
 // Parse validates and normalizes enabled binary package index targets.
 //
-//nolint:funlen // Single pass building repositories, targets and identities.
+
+// Parse validates and normalizes enabled binary package index targets.
 func (parser *RepositoryParser) Parse(data []byte) (RepositoryIndexes, error) {
 	if parser == nil || parser.repositoryID == nil {
 		return RepositoryIndexes{}, errors.New("APT repository parser is not configured")
@@ -72,16 +73,7 @@ func (parser *RepositoryParser) Parse(data []byte) (RepositoryIndexes, error) {
 		return RepositoryIndexes{}, fmt.Errorf("parse APT repository indexes: %w", err)
 	}
 
-	repositoriesByIdentity := make(map[string]packageinfo.Repository)
-	identityByID := make(map[string]string)
-	representativeByID := make(map[string]IndexTarget)
-	componentsByID := make(map[string]map[string]struct{})
-	sourceOwners := make(map[string]string)
-	result := RepositoryIndexes{
-		Repositories: make([]packageinfo.Repository, 0, len(records)),
-		Targets:      make([]IndexTarget, 0, len(records)),
-	}
-
+	grouped := newRepositoryGrouping(parser.repositoryID, len(records))
 	for recordNumber, record := range records {
 		target, identity, enabled, targetErr := repositoryTarget(record)
 		if targetErr != nil {
@@ -94,45 +86,99 @@ func (parser *RepositoryParser) Parse(data []byte) (RepositoryIndexes, error) {
 		if !enabled {
 			continue
 		}
-
-		repository, exists := repositoriesByIdentity[identity]
-		if !exists {
-			repository = packageinfo.Repository{
-				ID: parser.repositoryID(identity),
-			}
-			if repository.ID == "" {
-				return RepositoryIndexes{}, errors.New("APT repository ID generator returned an empty ID")
-			}
-			if owner, collision := identityByID[repository.ID]; collision && owner != identity {
-				return RepositoryIndexes{}, fmt.Errorf("APT repository ID collision for %q", repository.ID)
-			}
-			identityByID[repository.ID] = identity
-			repositoriesByIdentity[identity] = repository
-			representativeByID[repository.ID] = target
-			componentsByID[repository.ID] = make(map[string]struct{})
-			result.Repositories = append(result.Repositories, repository)
+		if addErr := grouped.add(target, identity); addErr != nil {
+			return RepositoryIndexes{}, addErr
 		}
-		if target.Component != "" {
-			componentsByID[repository.ID][target.Component] = struct{}{}
-		}
-
-		if owner, duplicate := sourceOwners[target.Source]; duplicate && owner != repository.ID {
-			return RepositoryIndexes{}, errors.New("APT repository source maps to multiple logical repositories")
-		}
-		sourceOwners[target.Source] = repository.ID
-		target.RepositoryID = repository.ID
-		result.Targets = append(result.Targets, target)
 	}
+
+	return grouped.finish(), nil
+}
+
+// repositoryGrouping collects index targets into logical repositories. The
+// identity, component and source bookkeeping is several maps that only make
+// sense together, so they travel together rather than through one long loop.
+type repositoryGrouping struct {
+	repositoryID   func(string) string
+	byIdentity     map[string]packageinfo.Repository
+	identityByID   map[string]string
+	representative map[string]IndexTarget
+	components     map[string]map[string]struct{}
+	sourceOwners   map[string]string
+	result         RepositoryIndexes
+}
+
+func newRepositoryGrouping(repositoryID func(string) string, capacity int) *repositoryGrouping {
+	return &repositoryGrouping{
+		repositoryID:   repositoryID,
+		byIdentity:     make(map[string]packageinfo.Repository),
+		identityByID:   make(map[string]string),
+		representative: make(map[string]IndexTarget),
+		components:     make(map[string]map[string]struct{}),
+		sourceOwners:   make(map[string]string),
+		result: RepositoryIndexes{
+			Repositories: make([]packageinfo.Repository, 0, capacity),
+			Targets:      make([]IndexTarget, 0, capacity),
+		},
+	}
+}
+
+func (grouping *repositoryGrouping) add(target IndexTarget, identity string) error {
+	repository, exists := grouping.byIdentity[identity]
+	if !exists {
+		var err error
+		repository, err = grouping.register(identity, target)
+		if err != nil {
+			return err
+		}
+	}
+	if target.Component != "" {
+		grouping.components[repository.ID][target.Component] = struct{}{}
+	}
+
+	if owner, duplicate := grouping.sourceOwners[target.Source]; duplicate && owner != repository.ID {
+		return errors.New("APT repository source maps to multiple logical repositories")
+	}
+	grouping.sourceOwners[target.Source] = repository.ID
+	target.RepositoryID = repository.ID
+	grouping.result.Targets = append(grouping.result.Targets, target)
+
+	return nil
+}
+
+func (grouping *repositoryGrouping) register(
+	identity string,
+	target IndexTarget,
+) (packageinfo.Repository, error) {
+	repository := packageinfo.Repository{ID: grouping.repositoryID(identity)}
+	if repository.ID == "" {
+		return packageinfo.Repository{}, errors.New("APT repository ID generator returned an empty ID")
+	}
+	if owner, collision := grouping.identityByID[repository.ID]; collision && owner != identity {
+		return packageinfo.Repository{}, fmt.Errorf("APT repository ID collision for %q", repository.ID)
+	}
+	grouping.identityByID[repository.ID] = identity
+	grouping.byIdentity[identity] = repository
+	grouping.representative[repository.ID] = target
+	grouping.components[repository.ID] = make(map[string]struct{})
+	grouping.result.Repositories = append(grouping.result.Repositories, repository)
+
+	return repository, nil
+}
+
+// finish names every repository from its components and returns the grouping
+// in a deterministic order.
+func (grouping *repositoryGrouping) finish() RepositoryIndexes {
+	result := grouping.result
 	for index := range result.Repositories {
 		repository := &result.Repositories[index]
-		components := make([]string, 0, len(componentsByID[repository.ID]))
-		for component := range componentsByID[repository.ID] {
+		components := make([]string, 0, len(grouping.components[repository.ID]))
+		for component := range grouping.components[repository.ID] {
 			components = append(components, component)
 		}
 		sort.Strings(components)
 		repository.Name = repositoryName(
-			representativeByID[repository.ID],
-			identityByID[repository.ID],
+			grouping.representative[repository.ID],
+			grouping.identityByID[repository.ID],
 			components,
 		)
 	}
@@ -156,7 +202,7 @@ func (parser *RepositoryParser) Parse(data []byte) (RepositoryIndexes, error) {
 		return leftTarget.Filename < rightTarget.Filename
 	})
 
-	return result, nil
+	return result
 }
 
 func repositoryTarget(record deb822Record) (IndexTarget, string, bool, error) {
@@ -199,6 +245,24 @@ func repositoryTarget(record deb822Record) (IndexTarget, string, bool, error) {
 		Codename:     record["codename"],
 		Trusted:      trusted,
 	}
+	if err := validateTargetFields(target); err != nil {
+		return IndexTarget{}, "", false, err
+	}
+	target.Filename = filepath.Clean(target.Filename)
+
+	fallbackURI, err := repositoryFallbackURL(record, sourceURL)
+	if err != nil {
+		return IndexTarget{}, "", false, err
+	}
+	identity := repositoryIdentity(target, fallbackURI)
+	target.Security = isSecurityRepository(target)
+
+	return target, identity, true, nil
+}
+
+// validateTargetFields rejects a record that cannot describe a usable index:
+// a missing required field, a value spanning lines, or a relative filename.
+func validateTargetFields(target IndexTarget) error {
 	for _, field := range []struct {
 		name  string
 		value string
@@ -207,7 +271,7 @@ func repositoryTarget(record deb822Record) (IndexTarget, string, bool, error) {
 		{name: "Architecture", value: target.Architecture},
 	} {
 		if field.value == "" {
-			return IndexTarget{}, "", false, fmt.Errorf("required field %s is empty", field.name)
+			return fmt.Errorf("required field %s is empty", field.name)
 		}
 	}
 	for _, field := range []struct {
@@ -224,22 +288,14 @@ func repositoryTarget(record deb822Record) (IndexTarget, string, bool, error) {
 		{name: "Codename", value: target.Codename},
 	} {
 		if strings.ContainsAny(field.value, "\r\n") {
-			return IndexTarget{}, "", false, fmt.Errorf("field %s must be a single line", field.name)
+			return fmt.Errorf("field %s must be a single line", field.name)
 		}
 	}
 	if !filepath.IsAbs(target.Filename) {
-		return IndexTarget{}, "", false, errors.New("field Filename must be an absolute path")
+		return errors.New("field Filename must be an absolute path")
 	}
-	target.Filename = filepath.Clean(target.Filename)
 
-	fallbackURI, err := repositoryFallbackURL(record, sourceURL)
-	if err != nil {
-		return IndexTarget{}, "", false, err
-	}
-	identity := repositoryIdentity(target, fallbackURI)
-	target.Security = isSecurityRepository(target)
-
-	return target, identity, true, nil
+	return nil
 }
 
 func yesNoField(record deb822Record, name string) (bool, error) {

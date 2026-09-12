@@ -33,51 +33,63 @@ func parseBackendOption(privateOptions any) (string, error) {
 		return backendAuto, nil
 	}
 
-	var value any
+	var (
+		value   any
+		present bool
+		err     error
+	)
 	switch options := privateOptions.(type) {
 	case map[string]any:
 		if _, tree := options["Name"]; tree {
-			backend, err := parsePrivateOptionTree(options)
-			if err != nil {
-				return "", err
+			backend, treeErr := parsePrivateOptionTree(options)
+			if treeErr != nil {
+				return "", treeErr
 			}
-			value = backend
 
-			break
+			return validateBackendOption(backend)
 		}
-		if len(options) == 0 {
-			return backendAuto, nil
-		}
-		var exists bool
-		value, exists = options["Backend"]
-		if !exists || len(options) != 1 {
-			return "", fmt.Errorf(
-				"invalid private plugin option keys %v: %w",
-				sortedOptionKeys(options),
-				errInvalidBackendOption,
-			)
-		}
+		value, present, err = flatBackendOption(options)
 	case map[string]string:
-		if len(options) == 0 {
-			return backendAuto, nil
-		}
-		var exists bool
-		value, exists = options["Backend"]
-		if !exists || len(options) != 1 {
-			return "", fmt.Errorf(
-				"invalid private plugin option keys %v: %w",
-				sortedOptionKeys(options),
-				errInvalidBackendOption,
-			)
-		}
+		value, present, err = flatBackendOption(options)
 	default:
 		return "", fmt.Errorf("private plugin options have type %T: %w", privateOptions, errInvalidBackendOption)
+	}
+	if err != nil {
+		return "", err
+	}
+	if !present {
+		return backendAuto, nil
 	}
 
 	backend, ok := value.(string)
 	if !ok {
 		return "", fmt.Errorf("the Backend option has type %T: %w", value, errInvalidBackendOption)
 	}
+
+	return validateBackendOption(backend)
+}
+
+// flatBackendOption reads the single supported option out of a flat option
+// map. Agent 2 delivers private options as either map[string]any or
+// map[string]string depending on the family, and the two were handled by
+// duplicated blocks.
+func flatBackendOption[T any](options map[string]T) (any, bool, error) {
+	if len(options) == 0 {
+		return nil, false, nil
+	}
+	value, exists := options["Backend"]
+	if !exists || len(options) != 1 {
+		return nil, false, fmt.Errorf(
+			"invalid private plugin option keys %v: %w",
+			sortedOptionKeys(options),
+			errInvalidBackendOption,
+		)
+	}
+
+	return value, true, nil
+}
+
+func validateBackendOption(backend string) (string, error) {
 	if backend != backendAuto && backend != backendDNF && backend != backendAPT {
 		return "", fmt.Errorf("the Backend option %q is invalid: %w", backend, errInvalidBackendOption)
 	}

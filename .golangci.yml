@@ -22,12 +22,17 @@ linters:
     - nolintlint
   settings:
     cyclop:
-      # Highest today is 19 (validatePackageSnapshot, the payload trust
-      # boundary, which is a flat sequence of independent checks).
-      max-complexity: 19
+      # Set at the highest non-waived function today (repositoryTarget, 17),
+      # so anything more tangled than what already exists is rejected. It was
+      # 19 until validatePackageSnapshot, validateBackendCapabilities and the
+      # repository grouping were split apart.
+      max-complexity: 17
     funlen:
-      lines: 80
-      statements: 80
+      # Set at today's highest non-waived function on each dimension, with no
+      # slack, so anything longer than what already exists is rejected. Was
+      # 80/80; the statement limit in particular was well above reality.
+      lines: 75
+      statements: 45
     tagliatelle:
       # This project's published payload is snake_case; that is the schema,
       # not a deviation from a camelCase default.

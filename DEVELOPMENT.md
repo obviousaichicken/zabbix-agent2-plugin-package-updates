@@ -30,7 +30,13 @@ ruby .github/ci/validate_templates.rb
 sh -n install.sh
 sh -n .dev/installer-test/dnf
 shellcheck install.sh .dev/installer-test/dnf
+go test -tags=integration ./internal/apt/
 ```
+
+The last of those needs a real `dpkg` on the machine. It covers the kernel
+comparison behind APT reboot detection, which containers cannot exercise:
+`/proc/sys/kernel/osrelease` reports the host kernel, so no kernel package
+inside a container will ever match the running release.
 
 Linting runs `golangci-lint`, configured in `.golangci.yml`. Build it with this
 module's toolchain rather than installing a release binary: published binaries

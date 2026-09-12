@@ -139,13 +139,18 @@ check_operating_system() {
 check_dnf_access() {
 	printf '%s\n' 'Checking DNF access...'
 	dnf_path="$(command -v dnf)"
-	# These mirror internal/dnf: --assumeno, and the skip_if_unavailable
-	# override that makes an unreachable repository fail rather than be
-	# silently ignored. A softer preflight passed on hosts where collection
-	# then failed at runtime.
-	run_as_zabbix "$dnf_path" --assumeno -q repolist </dev/null >/dev/null ||
+	# --assumeyes is deliberate here and must not be "aligned" with the
+	# collector's --assumeno: this preflight is the first DNF run as the
+	# unprivileged zabbix user, on a host whose repository GPG keys may not be
+	# imported yet, and only --assumeyes lets that import happen without a
+	# prompt. .dev/installer-test/dnf asserts it on every image build.
+	#
+	# The --setopt override does match the collector, so a repository that is
+	# unreachable fails here rather than silently passing preflight and
+	# failing at collection time.
+	run_as_zabbix "$dnf_path" --assumeyes -q repolist </dev/null >/dev/null ||
 		fail "the zabbix user cannot list DNF repositories"
-	run_as_zabbix "$dnf_path" --assumeno -q '--setopt=*.skip_if_unavailable=False' \
+	run_as_zabbix "$dnf_path" --assumeyes -q '--setopt=*.skip_if_unavailable=False' \
 		repoquery --upgrades --latest-limit=1 </dev/null >/dev/null ||
 		fail "the zabbix user cannot query DNF updates; check that every enabled repository is reachable"
 }
